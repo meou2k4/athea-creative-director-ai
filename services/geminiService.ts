@@ -7,7 +7,9 @@ import { ImageSize } from "../types";
 const TEXT_MODELS = [
     'gemini-2.5-flash',       // Model xịn nhất của bạn
     'gemini-2.0-flash-001',   // Backup 1 (Ổn định)
-    'gemini-2.0-flash-lite'   // Backup 2 (Siêu nhẹ)
+    'gemini-2.0-flash-lite' ,  // Backup 2 (Siêu nhẹ)
+    'gemini-1.5-flash',       // Ưu tiên 3: Model "cứu cánh" (Quota riêng, ít bị chặn chung với 2.0)
+    'gemini-1.5-flash-8b'     // Ưu tiên 4: Model siêu nhẹ
 ];
 
 // 2. Model tạo ảnh (Dùng Imagen 4.0 từ danh sách của bạn)
@@ -150,30 +152,36 @@ const executeSmartModel = async <T>(
             lastError = error;
             const msg = error.message || JSON.stringify(error);
             
-            // Xử lý lỗi Rate Limit (429) hoặc Server Busy (503)
-            if (msg.includes("429") || msg.includes("503") || msg.includes("overloaded")) {
-                console.warn(`⚠️ Model ${model} bị quá tải. Đang thử model tiếp theo...`);
-                await delay(2000); // Chờ 2s trước khi chuyển model
+            // Nếu lỗi Quota (429) -> Chờ lâu hơn (10s) để server "nguội"
+            if (msg.includes("429") || msg.includes("RESOURCE_EXHAUSTED")) {
+                console.warn(`⚠️ Model ${model} bị hết quota (429). Đang chờ 10s trước khi thử model dự phòng...`);
+                await delay(10000); // Tăng lên 10 giây
                 continue; 
             }
 
-            // Xử lý lỗi 404 (Không tìm thấy model)
-            if (msg.includes("404") || msg.includes("NOT_FOUND")) {
-                console.warn(`⚠️ Model ${model} không khả dụng (404). Đang thử model tiếp theo...`);
+            // Nếu lỗi Server Busy (503) -> Chờ 3s
+            if (msg.includes("503") || msg.includes("overloaded")) {
+                console.warn(`⚠️ Model ${model} bị quá tải (503). Chờ 3s...`);
+                await delay(3000);
                 continue;
             }
 
-            // Xử lý lỗi 403 (Quyền truy cập) - Lỗi này đổi model không sửa được
-            if (msg.includes("403") || msg.includes("PERMISSION_DENIED")) {
-                throw new Error("Lỗi quyền truy cập API Key. Vui lòng kiểm tra lại Key.");
+            if (msg.includes("404") || msg.includes("NOT_FOUND")) {
+                console.warn(`⚠️ Model ${model} không tồn tại. Bỏ qua.`);
+                continue;
             }
 
-            console.warn(`⚠️ Model ${model} gặp lỗi: ${msg}. Đang thử model khác...`);
+            if (msg.includes("403") || msg.includes("PERMISSION_DENIED")) {
+                throw new Error("Lỗi quyền truy cập API Key.");
+            }
+
+            console.warn(`⚠️ Model ${model} lỗi lạ: ${msg}. Thử model khác...`);
         }
     }
 
     console.error("❌ Tất cả các model đều thất bại.", lastError);
-    throw new Error("Hệ thống đang bận. Vui lòng thử lại sau ít phút.");
+    // Thông báo lỗi thân thiện hơn cho người dùng cuối
+    throw new Error("Hệ thống đang quá tải. Vui lòng đợi 1 phút rồi thử lại.");
 };
 
 // --- CÁC HÀM API ---
