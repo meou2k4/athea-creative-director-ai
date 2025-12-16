@@ -1,13 +1,17 @@
 import { GoogleGenAI } from "@google/genai";
 import { ImageSize } from "../types";
 
-// --- [CONFIG] CẤU HÌNH MODEL CHUẨN (ĐÃ KIỂM TRA HOẠT ĐỘNG) ---
-// Sử dụng bản Flash 1.5 ổn định (Rate limit cao: 15 RPM, 1500 RPD)
-// KHÔNG DÙNG bản 'exp' (thử nghiệm) vì dễ bị lỗi 429
-const TEXT_MODEL = 'gemini-1.5-flash'; 
+// --- [CONFIG] CẤU HÌNH MODEL THEO DANH SÁCH CỦA BẠN ---
 
-// Model tạo ảnh chuyên dụng của Google (Thay thế cho gemini-3 ảo)
-const IMAGE_MODEL = 'imagen-3.0-generate-001';
+// 1. Danh sách model Text để thử lần lượt (Ưu tiên bản 2.5 Flash Stable)
+const TEXT_MODELS = [
+    'gemini-2.5-flash',       // Model xịn nhất của bạn
+    'gemini-2.0-flash-001',   // Backup 1 (Ổn định)
+    'gemini-2.0-flash-lite'   // Backup 2 (Siêu nhẹ)
+];
+
+// 2. Model tạo ảnh (Dùng Imagen 4.0 từ danh sách của bạn)
+const IMAGE_MODEL = 'imagen-4.0-generate-001';
 
 const SYSTEM_INSTRUCTION_TEXT = `VAI TRÒ (ROLE):
 Bạn là 'Giám đốc Sáng tạo tại ATHEA', chuyên gia hàng đầu về nhiếp ảnh thương mại, thời trang và xây dựng thương hiệu. Nhiệm vụ của bạn là phân tích hình ảnh sản phẩm được tải lên và các tham số đầu vào (Bối cảnh, Người mẫu) để tạo ra một bản kế hoạch chụp ảnh (Shooting Plan) chi tiết.
@@ -98,31 +102,10 @@ const POSE_PROMPT_EXAMPLE = `{
     ]
   }
 }`;
+
 // --- HELPER FUNCTIONS ---
 
-// Hàm delay để chờ khi gặp lỗi quá tải
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
-
-const handleGeminiError = (error: any, functionName: string): never => {
-  console.error(`🔴 [Gemini Service Error] tại hàm '${functionName}':`, error);
-  const rawMessage = error?.message || JSON.stringify(error);
-  
-  let userFriendlyMessage = "Hệ thống đang bận xử lý. Vui lòng thử lại sau ít phút.";
-
-  if (rawMessage.includes("429") || rawMessage.includes("RESOURCE_EXHAUSTED")) {
-    userFriendlyMessage = "Hệ thống đang quá tải yêu cầu. Đang tự động thử lại...";
-  } else if (rawMessage.includes("503") || rawMessage.includes("overloaded")) {
-    userFriendlyMessage = "Máy chủ AI đang tạm thời bận rộn. Vui lòng thử lại.";
-  } else if (rawMessage.includes("SAFETY") || rawMessage.includes("HARM_CATEGORY")) {
-    userFriendlyMessage = "Hình ảnh đầu vào có thể vi phạm quy tắc an toàn. Vui lòng chọn ảnh khác.";
-  } else if (rawMessage.includes("403") || rawMessage.includes("PERMISSION_DENIED")) {
-    userFriendlyMessage = "Lỗi xác thực quyền truy cập API Key.";
-  } else if (rawMessage.includes("404") || rawMessage.includes("NOT_FOUND")) {
-    userFriendlyMessage = `Không tìm thấy Model AI (${TEXT_MODEL}). Vui lòng kiểm tra lại cấu hình.`;
-  }
-
-  throw new Error(userFriendlyMessage);
-};
 
 export const ensureApiKeySelected = async (): Promise<boolean> => {
   if (window.aistudio && window.aistudio.hasSelectedApiKey) {
@@ -152,45 +135,51 @@ const stripBase64Prefix = (base64String: string) => {
   return base64String.replace(/^data:image\/[a-z]+;base64,/, "");
 };
 
-// --- CƠ CHẾ RETRY THÔNG MINH ---
-const executeWithRetry = async <T>(action: () => Promise<T>, retries = 3): Promise<T> => {
-    try {
-        return await action();
-    } catch (error: any) {
-        const errorMessage = error.message || JSON.stringify(error);
-        
-        // Nếu lỗi Quota (429) hoặc Server Busy (503) -> Chờ và thử lại
-        if (
-            (errorMessage.includes("429") || errorMessage.includes("RESOURCE_EXHAUSTED") ||
-             errorMessage.includes("503") || errorMessage.includes("overloaded")) 
-            && retries > 0
-        ) {
-            console.warn(`⚠️ Gặp lỗi quá tải (${errorMessage.includes("429") ? "429" : "503"}). Đang chờ 4s để thử lại... (Còn ${retries} lần)`);
-            await delay(4000); // Chờ 4 giây (Gemini Free Tier hồi phục sau vài giây)
-            return executeWithRetry(action, retries - 1);
-        }
+// 
+// --- CƠ CHẾ GỌI API THÔNG MINH (Smart Execute) ---
+// Tự động thử lần lượt các model trong danh sách nếu gặp lỗi
+const executeSmartModel = async <T>(
+    apiCall: (modelName: string) => Promise<T>
+): Promise<T> => {
+    let lastError: any;
 
-        // Nếu lỗi quyền (403) -> Mở popup chọn key
-        if (errorMessage.includes("403") || errorMessage.includes("PERMISSION_DENIED")) {
-            console.warn("Permission denied (403). Prompting for API key selection...");
-            try {
-                if (window.aistudio?.openSelectKey) {
-                    await window.aistudio.openSelectKey();
-                    return await action();
-                }
-            } catch (selectError) { console.error(selectError); }
-            throw new Error("Quyền truy cập bị từ chối. Vui lòng chọn dự án hợp lệ.");
+    for (const model of TEXT_MODELS) {
+        try {
+            return await apiCall(model);
+        } catch (error: any) {
+            lastError = error;
+            const msg = error.message || JSON.stringify(error);
+            
+            // Xử lý lỗi Rate Limit (429) hoặc Server Busy (503)
+            if (msg.includes("429") || msg.includes("503") || msg.includes("overloaded")) {
+                console.warn(`⚠️ Model ${model} bị quá tải. Đang thử model tiếp theo...`);
+                await delay(2000); // Chờ 2s trước khi chuyển model
+                continue; 
+            }
+
+            // Xử lý lỗi 404 (Không tìm thấy model)
+            if (msg.includes("404") || msg.includes("NOT_FOUND")) {
+                console.warn(`⚠️ Model ${model} không khả dụng (404). Đang thử model tiếp theo...`);
+                continue;
+            }
+
+            // Xử lý lỗi 403 (Quyền truy cập) - Lỗi này đổi model không sửa được
+            if (msg.includes("403") || msg.includes("PERMISSION_DENIED")) {
+                throw new Error("Lỗi quyền truy cập API Key. Vui lòng kiểm tra lại Key.");
+            }
+
+            console.warn(`⚠️ Model ${model} gặp lỗi: ${msg}. Đang thử model khác...`);
         }
-        
-        handleGeminiError(error, "executeWithRetry"); 
     }
+
+    console.error("❌ Tất cả các model đều thất bại.", lastError);
+    throw new Error("Hệ thống đang bận. Vui lòng thử lại sau ít phút.");
 };
 
 // --- CÁC HÀM API ---
 
 export const suggestShootingContexts = async (imageBase64: string): Promise<string[]> => {
-  return executeWithRetry(async () => {
-    // Luôn lấy API Key mới nhất từ biến môi trường
+  return executeSmartModel(async (modelName) => {
     const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_API_KEY });
     const imagePart = {
       inlineData: {
@@ -204,7 +193,7 @@ export const suggestShootingContexts = async (imageBase64: string): Promise<stri
     Ví dụ: ["Studio phông nền màu be", "Đường phố Paris ngày nắng"]`;
 
     const response = await ai.models.generateContent({
-      model: TEXT_MODEL, // gemini-1.5-flash
+      model: modelName, 
       contents: { parts: [imagePart, { text: prompt }] },
       config: { responseMimeType: 'application/json' },
     });
@@ -215,7 +204,7 @@ export const suggestShootingContexts = async (imageBase64: string): Promise<stri
 };
 
 export const suggestModelStyles = async (imageBase64: string): Promise<string[]> => {
-  return executeWithRetry(async () => {
+  return executeSmartModel(async (modelName) => {
     const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_API_KEY });
     const imagePart = {
       inlineData: {
@@ -228,7 +217,7 @@ export const suggestModelStyles = async (imageBase64: string): Promise<string[]>
     Trả về kết quả TUYỆT ĐỐI chỉ là một JSON Array chứa các chuỗi string Tiếng Việt.`;
 
     const response = await ai.models.generateContent({
-      model: TEXT_MODEL,
+      model: modelName,
       contents: { parts: [imagePart, { text: prompt }] },
       config: { responseMimeType: 'application/json' },
     });
@@ -245,7 +234,7 @@ export const generateShootingPlan = async (
   closeupImageBase64?: string | null,
   faceImageBase64?: string | null
 ): Promise<string> => {
-  return executeWithRetry(async () => {
+  return executeSmartModel(async (modelName) => {
     const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_API_KEY });
     const parts: any[] = [];
     
@@ -281,7 +270,7 @@ export const generateShootingPlan = async (
     parts.push({ text: promptText });
 
     const response = await ai.models.generateContent({
-      model: TEXT_MODEL,
+      model: modelName,
       contents: { parts: parts },
       config: {
         systemInstruction: SYSTEM_INSTRUCTION_TEXT,
@@ -299,7 +288,7 @@ export const generatePosePrompt = async (
     poseDescription: string,
     userContext: string
 ): Promise<string> => {
-    return executeWithRetry(async () => {
+    return executeSmartModel(async (modelName) => {
         const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_API_KEY });
         const imagePart = {
             inlineData: {
@@ -308,10 +297,10 @@ export const generatePosePrompt = async (
             },
         };
 
-        const prompt = `Based on the attached product image... (Giữ nguyên prompt tiếng Anh của bạn)... Structure & Style Reference (JSON): ${POSE_PROMPT_EXAMPLE}`;
+        const prompt = `Based on the attached product image... (System Instruction của bạn)... Structure & Style Reference (JSON): ${POSE_PROMPT_EXAMPLE}`;
 
         const response = await ai.models.generateContent({
-            model: TEXT_MODEL,
+            model: modelName,
             contents: { parts: [imagePart, { text: prompt }] },
             config: {
                 responseMimeType: 'application/json',
@@ -347,29 +336,39 @@ export const generateImageFromJsonPrompt = async (
     FASHION ITEM: ${promptObj.wardrobe_and_accessories?.shared_product || ''}
     `;
 
-    return executeWithRetry(async () => {
-        const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_API_KEY });
-        
-        try {
-            // SỬ DỤNG IMAGEN 3 (Chuẩn tạo ảnh, không dùng gemini text)
-            // @ts-ignore - Ignore type check nếu SDK chưa update type cho imagen
-            const response = await ai.models.generateImages({
-                model: IMAGE_MODEL,
-                prompt: constructedPrompt,
-                config: {
-                    numberOfImages: 1,
-                    aspectRatio: "3:4", 
-                }
-            });
-
-            const generatedImage = response.generatedImages?.[0]?.image;
-            if (generatedImage?.imageBytes) {
-                return `data:image/png;base64,${generatedImage.imageBytes}`;
+    // Phần tạo ảnh: Gọi thẳng Imagen 4.0
+    const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_API_KEY });
+    try {
+        // @ts-ignore
+        const response = await ai.models.generateImages({
+            model: IMAGE_MODEL, // imagen-4.0-generate-001
+            prompt: constructedPrompt,
+            config: {
+                numberOfImages: 1,
+                aspectRatio: "3:4", 
             }
-        } catch (imgError: any) {
-             console.warn("Imagen 3 failed", imgError);
-             throw new Error("Tạo ảnh thất bại (Model Imagen chưa khả dụng với Key này).");
+        });
+
+        const generatedImage = response.generatedImages?.[0]?.image;
+        if (generatedImage?.imageBytes) {
+            return `data:image/png;base64,${generatedImage.imageBytes}`;
         }
-        throw new Error("Không có ảnh nào được tạo ra.");
-    });
+    } catch (error: any) {
+        console.warn("Imagen 4 failed, trying fallback...", error);
+        
+        // Nếu Imagen 4 lỗi, thử fallback về bản 3.0 preview (cũng có trong list của bạn)
+        try {
+             // @ts-ignore
+             const responseFallback = await ai.models.generateImages({
+                model: 'gemini-3-pro-image-preview', // Model này cũng có trong list của bạn
+                prompt: constructedPrompt,
+                config: { numberOfImages: 1 }
+            });
+            const img = responseFallback.generatedImages?.[0]?.image;
+            if (img?.imageBytes) return `data:image/png;base64,${img.imageBytes}`;
+        } catch (e) {}
+
+        throw new Error("Tạo ảnh thất bại. Hệ thống đang bận.");
+    }
+    throw new Error("Không có ảnh nào được tạo ra.");
 };
