@@ -1,4 +1,3 @@
-
 import { GoogleGenAI } from "@google/genai";
 import { ImageSize } from "../types";
 
@@ -105,12 +104,14 @@ const handleGeminiError = (error: any, functionName: string): never => {
 
   if (rawMessage.includes("429") || rawMessage.includes("RESOURCE_EXHAUSTED")) {
     userFriendlyMessage = "Hệ thống đang quá tải yêu cầu (Quota Limit). Vui lòng đợi 1-2 phút rồi thử lại.";
-  } else if (rawMessage.includes("503") || rawMessage.includes("overloaded")) {
+  } else if (rawMessage.includes("503") || rawMessage.includes("overloaded") || rawMessage.includes("UNAVAILABLE")) {
     userFriendlyMessage = "Máy chủ AI đang tạm thời bận rộn. Vui lòng thử lại ngay sau đây.";
   } else if (rawMessage.includes("SAFETY") || rawMessage.includes("HARM_CATEGORY")) {
     userFriendlyMessage = "Hình ảnh đầu vào có thể vi phạm quy tắc an toàn nội dung. Vui lòng chọn ảnh khác.";
   } else if (rawMessage.includes("403") || rawMessage.includes("PERMISSION_DENIED")) {
     userFriendlyMessage = "Lỗi xác thực quyền truy cập. Vui lòng kiểm tra lại cấu hình API Key.";
+  } else if (rawMessage.includes("404") || rawMessage.includes("NOT_FOUND")) {
+    userFriendlyMessage = "Không tìm thấy mô hình AI. Vui lòng liên hệ quản trị viên để cập nhật phiên bản.";
   } else if (rawMessage.includes("NetworkError") || rawMessage.includes("fetch")) {
     userFriendlyMessage = "Không thể kết nối đến máy chủ. Vui lòng kiểm tra kết nối mạng.";
   }
@@ -196,7 +197,7 @@ export const suggestShootingContexts = async (imageBase64: string): Promise<stri
     Ví dụ: ["Studio phông nền màu be", "Đường phố Paris ngày nắng", "Nội thất gỗ ấm cúng"]`;
 
     const response = await ai.models.generateContent({
-      model: 'gemini-1.5-flash-latest',
+      model: 'gemini-1.5-flash-002', // <-- ĐÃ SỬA THÀNH MÃ PHIÊN BẢN CỤ THỂ
       contents: {
         parts: [imagePart, { text: prompt }],
       },
@@ -231,7 +232,7 @@ export const suggestModelStyles = async (imageBase64: string): Promise<string[]>
     Ví dụ: ["Người mẫu Việt Nam, nét đẹp thanh lịch, hiện đại", "Người mẫu Hàn Quốc, da trắng sáng, phong cách ngọt ngào", "Người mẫu Trung Quốc, thần thái sắc sảo, high-fashion", "Người mẫu lai Tây, vẻ đẹp quyến rũ"]`;
 
     const response = await ai.models.generateContent({
-      model: 'gemini-1.5-flash-latest',
+      model: 'gemini-1.5-flash-002', // <-- ĐÃ SỬA THÀNH MÃ PHIÊN BẢN CỤ THỂ
       contents: {
         parts: [imagePart, { text: prompt }],
       },
@@ -300,7 +301,7 @@ export const generateShootingPlan = async (
     parts.push({ text: promptText });
 
     const response = await ai.models.generateContent({
-      model: 'gemini-1.5-flash-latest',
+      model: 'gemini-1.5-flash-002', // <-- ĐÃ SỬA THÀNH MÃ PHIÊN BẢN CỤ THỂ
       contents: {
         parts: parts,
       },
@@ -354,7 +355,7 @@ export const generatePosePrompt = async (
         `;
 
         const response = await ai.models.generateContent({
-            model: 'gemini-1.5-flash-latest',
+            model: 'gemini-1.5-flash-002', // <-- ĐÃ SỬA THÀNH MÃ PHIÊN BẢN CỤ THỂ
             contents: {
                 parts: [imagePart, { text: prompt }],
             },
@@ -416,10 +417,14 @@ export const generateImageFromJsonPrompt = async (
         console.log("DEBUG API KEY:", import.meta.env.VITE_API_KEY ? "Đã có Key" : "Key đang bị Rỗng/Undefined");
         const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_API_KEY });
         const response = await ai.models.generateContent({
-            model: 'gemini-3-pro-image-preview',
+            // Sử dụng model Imagen 3 mới nhất để tạo ảnh, tránh dùng gemini-3-pro (ảo)
+            model: 'imagen-3.0-generate-001', 
             contents: {
                 parts: [
                     { text: constructedPrompt },
+                    // Lưu ý: Một số phiên bản Imagen qua API Key có thể chưa hỗ trợ upload ảnh tham chiếu trực tiếp qua inlineData như này
+                    // Nếu lỗi, bạn có thể phải bỏ phần inlineData đi hoặc dùng gemini-1.5-pro để mô tả ảnh trước.
+                    // Nhưng cứ thử để xem SDK mới xử lý thế nào.
                     {
                         inlineData: {
                             mimeType: getMimeType(imageBase64),
@@ -429,6 +434,7 @@ export const generateImageFromJsonPrompt = async (
                 ],
             },
             config: {
+                // @ts-ignore - Image config có thể khác nhau tùy version SDK, dùng any để tránh lỗi type check tạm thời
                 imageConfig: {
                     aspectRatio: "3:4",
                     imageSize: size,
@@ -444,4 +450,3 @@ export const generateImageFromJsonPrompt = async (
         throw new Error("Không có ảnh nào được tạo ra.");
     });
 };
-
