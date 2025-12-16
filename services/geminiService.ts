@@ -92,6 +92,33 @@ const POSE_PROMPT_EXAMPLE = `{
   }
 }`;
 
+// --- [NEW] HÀM XỬ LÝ LỖI TẬP TRUNG ---
+const handleGeminiError = (error: any, functionName: string): never => {
+  // 1. Log lỗi chi tiết ra console cho Developer xem (giữ nguyên stack trace)
+  console.error(`🔴 [Gemini Service Error] tại hàm '${functionName}':`, error);
+
+  // 2. Lấy message gốc để phân tích
+  const rawMessage = error?.message || JSON.stringify(error);
+  
+  // 3. Định nghĩa thông báo hiển thị cho Khách hàng
+  let userFriendlyMessage = "Hệ thống đang bận xử lý. Vui lòng thử lại sau ít phút.";
+
+  if (rawMessage.includes("429") || rawMessage.includes("RESOURCE_EXHAUSTED")) {
+    userFriendlyMessage = "Hệ thống đang quá tải yêu cầu (Quota Limit). Vui lòng đợi 1-2 phút rồi thử lại.";
+  } else if (rawMessage.includes("503") || rawMessage.includes("overloaded")) {
+    userFriendlyMessage = "Máy chủ AI đang tạm thời bận rộn. Vui lòng thử lại ngay sau đây.";
+  } else if (rawMessage.includes("SAFETY") || rawMessage.includes("HARM_CATEGORY")) {
+    userFriendlyMessage = "Hình ảnh đầu vào có thể vi phạm quy tắc an toàn nội dung. Vui lòng chọn ảnh khác.";
+  } else if (rawMessage.includes("403") || rawMessage.includes("PERMISSION_DENIED")) {
+    userFriendlyMessage = "Lỗi xác thực quyền truy cập. Vui lòng kiểm tra lại cấu hình API Key.";
+  } else if (rawMessage.includes("NetworkError") || rawMessage.includes("fetch")) {
+    userFriendlyMessage = "Không thể kết nối đến máy chủ. Vui lòng kiểm tra kết nối mạng.";
+  }
+
+  // 4. Ném ra lỗi mới chỉ chứa thông báo thân thiện
+  throw new Error(userFriendlyMessage);
+};
+
 // Helper to check API Key selection for paid models
 export const ensureApiKeySelected = async (): Promise<boolean> => {
   if (window.aistudio && window.aistudio.hasSelectedApiKey) {
@@ -128,7 +155,7 @@ const executeWithRetry = async <T>(action: () => Promise<T>): Promise<T> => {
     } catch (error: any) {
         const errorMessage = error.message || JSON.stringify(error);
         
-        // Detect 403 / Permission Denied errors
+        // Giữ nguyên logic xử lý 403 đặc biệt của bạn để mở popup key
         if (
             errorMessage.includes("403") || 
             errorMessage.includes("PERMISSION_DENIED") || 
@@ -136,21 +163,20 @@ const executeWithRetry = async <T>(action: () => Promise<T>): Promise<T> => {
             errorMessage.includes("The caller does not have permission")
         ) {
             console.warn("Permission denied (403). Prompting for API key selection and retrying...");
-            
             try {
                 if (window.aistudio?.openSelectKey) {
                     await window.aistudio.openSelectKey();
-                    // Retry the action immediately after key selection
                     return await action();
                 }
             } catch (selectError) {
                 console.error("Error opening key selector:", selectError);
             }
-            
+            // Nếu retry thất bại hoặc không mở được popup -> Ném lỗi thân thiện
             throw new Error("Quyền truy cập bị từ chối. Vui lòng chọn dự án có khóa API trả phí hợp lệ.");
         }
         
-        throw error;
+        // Với các lỗi khác, đẩy qua hàm xử lý chung
+        handleGeminiError(error, "executeWithRetry"); 
     }
 };
 
@@ -286,8 +312,7 @@ export const generateShootingPlan = async (
 
     return response.text || "Không thể tạo kế hoạch. Vui lòng thử lại.";
   } catch (error) {
-    console.error("Error generating plan:", error);
-    throw error;
+    handleGeminiError(error, "generateShootingPlan");
   }
 };
 
@@ -337,8 +362,7 @@ export const generatePosePrompt = async (
 
         return response.text || "{}";
     } catch (error) {
-        console.error("Error generating pose prompt:", error);
-        throw error;
+        handleGeminiError(error, "generatePosePrompt");
     }
 }
 

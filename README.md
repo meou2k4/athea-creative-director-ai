@@ -2,11 +2,13 @@
 <img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
 </div>
 
-# Run and deploy your AI Studio app
+# Athea Creative Director AI
 
-This contains everything you need to run your app locally.
+Athea is an AI-powered creative director tool that assists with creative tasks using advanced AI models.
 
-View your app in AI Studio: https://ai.studio/apps/drive/1g5-Mcob7g0HDCnBBPdUdR84zEyqyG88r
+## Demo
+
+View the live demo: https://copy-of-athea-creative-director-ai.vercel.app/
 
 ## Run Locally
 
