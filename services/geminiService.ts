@@ -196,7 +196,7 @@ export const suggestShootingContexts = async (imageBase64: string): Promise<stri
     Ví dụ: ["Studio phông nền màu be", "Đường phố Paris ngày nắng", "Nội thất gỗ ấm cúng"]`;
 
     const response = await ai.models.generateContent({
-      model: 'gemini-1.5-flash',
+      model: 'gemini-1.5-flash-latest',
       contents: {
         parts: [imagePart, { text: prompt }],
       },
@@ -231,7 +231,7 @@ export const suggestModelStyles = async (imageBase64: string): Promise<string[]>
     Ví dụ: ["Người mẫu Việt Nam, nét đẹp thanh lịch, hiện đại", "Người mẫu Hàn Quốc, da trắng sáng, phong cách ngọt ngào", "Người mẫu Trung Quốc, thần thái sắc sảo, high-fashion", "Người mẫu lai Tây, vẻ đẹp quyến rũ"]`;
 
     const response = await ai.models.generateContent({
-      model: 'gemini-1.5-flash',
+      model: 'gemini-1.5-flash-latest',
       contents: {
         parts: [imagePart, { text: prompt }],
       },
@@ -300,7 +300,7 @@ export const generateShootingPlan = async (
     parts.push({ text: promptText });
 
     const response = await ai.models.generateContent({
-      model: 'gemini-1.5-flash',
+      model: 'gemini-1.5-flash-latest',
       contents: {
         parts: parts,
       },
@@ -354,7 +354,7 @@ export const generatePosePrompt = async (
         `;
 
         const response = await ai.models.generateContent({
-            model: 'gemini-1.5-flash',
+            model: 'gemini-1.5-flash-latest',
             contents: {
                 parts: [imagePart, { text: prompt }],
             },
