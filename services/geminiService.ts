@@ -182,7 +182,7 @@ const executeWithRetry = async <T>(action: () => Promise<T>): Promise<T> => {
 
 export const suggestShootingContexts = async (imageBase64: string): Promise<string[]> => {
   try {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const ai = new GoogleGenAI({ apiKey: process.env.NEXT_PUBLIC_API_KEY });
     const imagePart = {
       inlineData: {
         mimeType: getMimeType(imageBase64),
