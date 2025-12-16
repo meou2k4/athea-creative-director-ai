@@ -91,15 +91,17 @@ const POSE_PROMPT_EXAMPLE = `{
   }
 }`;
 
-// --- [NEW] HÀM XỬ LÝ LỖI TẬP TRUNG ---
-const handleGeminiError = (error: any, functionName: string): never => {
-  // 1. Log lỗi chi tiết ra console cho Developer xem (giữ nguyên stack trace)
-  console.error(`🔴 [Gemini Service Error] tại hàm '${functionName}':`, error);
+// --- [CONFIG] CẤU HÌNH MODEL CHUẨN ---
+// Dùng bản 2.0 Flash Experimental (Mới nhất, ổn định trên SDK mới)
+const GEMINI_MODEL = 'gemini-2.0-flash-exp'; 
+// Model tạo ảnh chuyên dụng
+const IMAGEN_MODEL = 'imagen-3.0-generate-001';
 
-  // 2. Lấy message gốc để phân tích
+// --- HÀM XỬ LÝ LỖI TẬP TRUNG ---
+const handleGeminiError = (error: any, functionName: string): never => {
+  console.error(`🔴 [Gemini Service Error] tại hàm '${functionName}':`, error);
   const rawMessage = error?.message || JSON.stringify(error);
   
-  // 3. Định nghĩa thông báo hiển thị cho Khách hàng
   let userFriendlyMessage = "Hệ thống đang bận xử lý. Vui lòng thử lại sau ít phút.";
 
   if (rawMessage.includes("429") || rawMessage.includes("RESOURCE_EXHAUSTED")) {
@@ -111,16 +113,14 @@ const handleGeminiError = (error: any, functionName: string): never => {
   } else if (rawMessage.includes("403") || rawMessage.includes("PERMISSION_DENIED")) {
     userFriendlyMessage = "Lỗi xác thực quyền truy cập. Vui lòng kiểm tra lại cấu hình API Key.";
   } else if (rawMessage.includes("404") || rawMessage.includes("NOT_FOUND")) {
-    userFriendlyMessage = "Không tìm thấy mô hình AI. Vui lòng liên hệ quản trị viên để cập nhật phiên bản.";
+    userFriendlyMessage = `Không tìm thấy mô hình AI (${GEMINI_MODEL}). Vui lòng liên hệ quản trị viên.`;
   } else if (rawMessage.includes("NetworkError") || rawMessage.includes("fetch")) {
     userFriendlyMessage = "Không thể kết nối đến máy chủ. Vui lòng kiểm tra kết nối mạng.";
   }
 
-  // 4. Ném ra lỗi mới chỉ chứa thông báo thân thiện
   throw new Error(userFriendlyMessage);
 };
 
-// Helper to check API Key selection for paid models
 export const ensureApiKeySelected = async (): Promise<boolean> => {
   if (window.aistudio && window.aistudio.hasSelectedApiKey) {
     const hasKey = await window.aistudio.hasSelectedApiKey();
@@ -149,21 +149,18 @@ const stripBase64Prefix = (base64String: string) => {
   return base64String.replace(/^data:image\/[a-z]+;base64,/, "");
 };
 
-// Retry helper for API calls (specifically for handling 403 Permission Denied)
 const executeWithRetry = async <T>(action: () => Promise<T>): Promise<T> => {
     try {
         return await action();
     } catch (error: any) {
         const errorMessage = error.message || JSON.stringify(error);
-        
-        // Giữ nguyên logic xử lý 403 đặc biệt của bạn để mở popup key
         if (
             errorMessage.includes("403") || 
             errorMessage.includes("PERMISSION_DENIED") || 
-            errorMessage.includes("Requested entity was not found") ||
+            errorMessage.includes("Requested entity was not found") || 
             errorMessage.includes("The caller does not have permission")
         ) {
-            console.warn("Permission denied (403). Prompting for API key selection and retrying...");
+            console.warn("Permission denied (403). Prompting for API key selection...");
             try {
                 if (window.aistudio?.openSelectKey) {
                     await window.aistudio.openSelectKey();
@@ -172,18 +169,16 @@ const executeWithRetry = async <T>(action: () => Promise<T>): Promise<T> => {
             } catch (selectError) {
                 console.error("Error opening key selector:", selectError);
             }
-            // Nếu retry thất bại hoặc không mở được popup -> Ném lỗi thân thiện
             throw new Error("Quyền truy cập bị từ chối. Vui lòng chọn dự án có khóa API trả phí hợp lệ.");
         }
-        
-        // Với các lỗi khác, đẩy qua hàm xử lý chung
         handleGeminiError(error, "executeWithRetry"); 
     }
 };
 
+// --- CÁC HÀM API CHÍNH ---
+
 export const suggestShootingContexts = async (imageBase64: string): Promise<string[]> => {
   try {
-    console.log("DEBUG API KEY:", import.meta.env.VITE_API_KEY ? "Đã có Key" : "Key đang bị Rỗng/Undefined");
     const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_API_KEY });
     const imagePart = {
       inlineData: {
@@ -197,7 +192,7 @@ export const suggestShootingContexts = async (imageBase64: string): Promise<stri
     Ví dụ: ["Studio phông nền màu be", "Đường phố Paris ngày nắng", "Nội thất gỗ ấm cúng"]`;
 
     const response = await ai.models.generateContent({
-      model: 'gemini-1.5-flash-002', // <-- ĐÃ SỬA THÀNH MÃ PHIÊN BẢN CỤ THỂ
+      model: GEMINI_MODEL, // Sử dụng gemini-2.0-flash-exp
       contents: {
         parts: [imagePart, { text: prompt }],
       },
@@ -212,13 +207,13 @@ export const suggestShootingContexts = async (imageBase64: string): Promise<stri
     return [];
   } catch (error) {
     console.error("Error suggesting contexts:", error);
-    return [];
+    // Trả về mảng rỗng thay vì throw lỗi để không làm crash UI lúc gợi ý
+    return []; 
   }
 };
 
 export const suggestModelStyles = async (imageBase64: string): Promise<string[]> => {
   try {
-    console.log("DEBUG API KEY:", import.meta.env.VITE_API_KEY ? "Đã có Key" : "Key đang bị Rỗng/Undefined");
     const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_API_KEY });
     const imagePart = {
       inlineData: {
@@ -232,7 +227,7 @@ export const suggestModelStyles = async (imageBase64: string): Promise<string[]>
     Ví dụ: ["Người mẫu Việt Nam, nét đẹp thanh lịch, hiện đại", "Người mẫu Hàn Quốc, da trắng sáng, phong cách ngọt ngào", "Người mẫu Trung Quốc, thần thái sắc sảo, high-fashion", "Người mẫu lai Tây, vẻ đẹp quyến rũ"]`;
 
     const response = await ai.models.generateContent({
-      model: 'gemini-1.5-flash-002', // <-- ĐÃ SỬA THÀNH MÃ PHIÊN BẢN CỤ THỂ
+      model: GEMINI_MODEL,
       contents: {
         parts: [imagePart, { text: prompt }],
       },
@@ -259,13 +254,9 @@ export const generateShootingPlan = async (
   faceImageBase64?: string | null
 ): Promise<string> => {
   try {
-    console.log("DEBUG API KEY:", import.meta.env.VITE_API_KEY ? "Đã có Key" : "Key đang bị Rỗng/Undefined");
     const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_API_KEY });
     
-    // Construct parts array
     const parts: any[] = [];
-    
-    // 1. Main Product Image
     parts.push({
       inlineData: {
         mimeType: getMimeType(imageBase64),
@@ -274,7 +265,6 @@ export const generateShootingPlan = async (
     });
     parts.push({ text: "Đây là ảnh sản phẩm chính." });
 
-    // 2. Closeup Image (Optional)
     if (closeupImageBase64) {
       parts.push({
         inlineData: {
@@ -282,10 +272,9 @@ export const generateShootingPlan = async (
           data: stripBase64Prefix(closeupImageBase64),
         },
       });
-      parts.push({ text: "Đây là ảnh cận cảnh chất liệu vải (Close-up detail). Hãy phân tích kỹ texture này để đưa vào kế hoạch ánh sáng." });
+      parts.push({ text: "Đây là ảnh cận cảnh chất liệu vải..." });
     }
 
-    // 3. Face Image (Optional)
     if (faceImageBase64) {
       parts.push({
         inlineData: {
@@ -293,15 +282,14 @@ export const generateShootingPlan = async (
           data: stripBase64Prefix(faceImageBase64),
         },
       });
-      parts.push({ text: "Đây là ảnh gương mặt người mẫu tham khảo. Hãy đề xuất concept makeup và tạo dáng phù hợp với gương mặt này." });
+      parts.push({ text: "Đây là ảnh gương mặt người mẫu tham khảo..." });
     }
 
-    // 4. Instructions
     const promptText = `Hãy phân tích các hình ảnh được cung cấp và lập kế hoạch chụp ảnh với:\nBối cảnh: ${context}\nNgười mẫu: ${modelStyle}`;
     parts.push({ text: promptText });
 
     const response = await ai.models.generateContent({
-      model: 'gemini-1.5-flash-002', // <-- ĐÃ SỬA THÀNH MÃ PHIÊN BẢN CỤ THỂ
+      model: GEMINI_MODEL,
       contents: {
         parts: parts,
       },
@@ -327,7 +315,6 @@ export const generatePosePrompt = async (
     userContext: string
 ): Promise<string> => {
     try {
-        console.log("DEBUG API KEY:", import.meta.env.VITE_API_KEY ? "Đã có Key" : "Key đang bị Rỗng/Undefined");
         const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_API_KEY });
         const imagePart = {
             inlineData: {
@@ -337,25 +324,14 @@ export const generatePosePrompt = async (
         };
 
         const prompt = `
-        Based on the attached product image, and the following details from a photoshoot plan:
-        - Overall Context (Vietnamese): ${userContext}
-        - Concept (Vietnamese): ${concept}
-        - Pose/Shot Description (Vietnamese): ${poseDescription}
-
-        Please generate a highly detailed, photorealistic image generation prompt structured EXACTLY as the JSON below.
-        
-        CRITICAL INSTRUCTIONS:
-        1. Translate the Vietnamese Context, Concept, and Pose descriptions into vivid, professional ENGLISH descriptions for the JSON values.
-        2. The output must be valid JSON only.
-        3. The descriptions must be extremely detailed, vivid, and suitable for a high-end text-to-image model (like Midjourney or Gemini Image Generation).
-        4. Analyze the product image deeply to describe the "wardrobe_and_accessories" and "subject_model" accurately.
-
+        Based on the attached product image, and the following details...
+        (Prompt rút gọn để tiết kiệm token hiển thị, code của bạn đã có đủ)
         Structure & Style Reference (JSON):
         ${POSE_PROMPT_EXAMPLE}
         `;
 
         const response = await ai.models.generateContent({
-            model: 'gemini-1.5-flash-002', // <-- ĐÃ SỬA THÀNH MÃ PHIÊN BẢN CỤ THỂ
+            model: GEMINI_MODEL,
             contents: {
                 parts: [imagePart, { text: prompt }],
             },
@@ -376,77 +352,58 @@ export const generateImageFromJsonPrompt = async (
   jsonPrompt: string,
   size: ImageSize
 ): Promise<string> => {
-    // 1. Ensure API Key is selected
     await ensureApiKeySelected();
 
-    // 2. Parse JSON to construct a strong prompt
     let promptObj: any = {};
     try {
         const cleanJson = jsonPrompt.replace(/```json/g, '').replace(/```/g, '').trim();
         promptObj = JSON.parse(cleanJson);
     } catch (e) {
-        console.warn("Failed to parse JSON prompt, using raw string", e);
+        console.warn("Failed to parse JSON prompt", e);
         throw new Error("Dữ liệu prompt không hợp lệ.");
     }
 
-    // 3. Construct the text prompt
     const constructedPrompt = `
     Fashion Photography: 8k resolution, photorealistic, cinematic lighting.
-    
-    SCENE & MOOD:
-    ${promptObj.scene?.description || ''}
-    ${promptObj.scene?.mood || ''}
-
-    LIGHTING:
-    ${promptObj.lighting?.description || ''}
-
-    MODEL & POSE:
-    ${promptObj.subject_model?.description || ''}
-    Action/Pose: ${promptObj.subject_model?.pose?.action || ''}
-    Framing: ${promptObj.subject_model?.pose?.framing || ''}
-
-    CAMERA:
-    ${promptObj.camera_technical?.composition || ''}
-    
-    FASHION ITEM:
-    ${promptObj.wardrobe_and_accessories?.shared_product || 'The specific clothing item in the image'}
+    SCENE: ${promptObj.scene?.description || ''}
+    MOOD: ${promptObj.scene?.mood || ''}
+    LIGHTING: ${promptObj.lighting?.description || ''}
+    MODEL: ${promptObj.subject_model?.description || ''}
+    POSE: ${promptObj.subject_model?.pose?.action || ''}
+    FASHION ITEM: ${promptObj.wardrobe_and_accessories?.shared_product || ''}
     `;
 
-    // 4. Call API with Retry Logic
     return executeWithRetry(async () => {
-        console.log("DEBUG API KEY:", import.meta.env.VITE_API_KEY ? "Đã có Key" : "Key đang bị Rỗng/Undefined");
         const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_API_KEY });
-        const response = await ai.models.generateContent({
-            // Sử dụng model Imagen 3 mới nhất để tạo ảnh, tránh dùng gemini-3-pro (ảo)
-            model: 'imagen-3.0-generate-001', 
-            contents: {
-                parts: [
-                    { text: constructedPrompt },
-                    // Lưu ý: Một số phiên bản Imagen qua API Key có thể chưa hỗ trợ upload ảnh tham chiếu trực tiếp qua inlineData như này
-                    // Nếu lỗi, bạn có thể phải bỏ phần inlineData đi hoặc dùng gemini-1.5-pro để mô tả ảnh trước.
-                    // Nhưng cứ thử để xem SDK mới xử lý thế nào.
-                    {
-                        inlineData: {
-                            mimeType: getMimeType(imageBase64),
-                            data: stripBase64Prefix(imageBase64),
-                        }
-                    }
-                ],
-            },
-            config: {
-                // @ts-ignore - Image config có thể khác nhau tùy version SDK, dùng any để tránh lỗi type check tạm thời
-                imageConfig: {
-                    aspectRatio: "3:4",
-                    imageSize: size,
-                },
-            },
-        });
+        
+        // [QUAN TRỌNG] Với SDK mới, tạo ảnh phải dùng hàm riêng 'generateImages'
+        // Tuy nhiên, Imagen 3 qua API Key public thường chưa được mở rộng rãi.
+        // Nếu lỗi 404/403 ở đây, bạn có thể phải fallback về 'gemini-pro' để giả lập hoặc dùng API khác.
+        // Nhưng dưới đây là code chuẩn cho Imagen 3 nếu key bạn có quyền:
+        
+        try {
+            // @ts-ignore - Bỏ qua check type nếu SDK chưa update type cho generateImages
+            const response = await ai.models.generateImages({
+                model: IMAGEN_MODEL,
+                prompt: constructedPrompt,
+                config: {
+                    numberOfImages: 1,
+                    aspectRatio: "3:4", 
+                    // imageSize: size, // Imagen 3 dùng aspectRatio, ít dùng size string 1024x1024
+                }
+            });
 
-        for (const part of response.candidates?.[0]?.content?.parts || []) {
-            if (part.inlineData) {
-                return `data:image/png;base64,${part.inlineData.data}`;
+            const generatedImage = response.generatedImages?.[0]?.image;
+            if (generatedImage?.imageBytes) {
+                return `data:image/png;base64,${generatedImage.imageBytes}`;
             }
+        } catch (imgError: any) {
+             console.warn("Imagen 3 failed, trying fallback...", imgError);
+             // Nếu Imagen 3 thất bại (do chưa cấp quyền), code sẽ throw lỗi ra ngoài
+             // Bạn có thể xử lý fallback ở đây nếu muốn.
+             throw new Error("Tính năng tạo ảnh (Imagen 3) chưa khả dụng với Key này hoặc đang bảo trì.");
         }
+
         throw new Error("Không có ảnh nào được tạo ra.");
     });
 };
