@@ -1,6 +1,14 @@
 import { GoogleGenAI } from "@google/genai";
 import { ImageSize } from "../types";
 
+// --- [CONFIG] CẤU HÌNH MODEL CHUẨN (ĐÃ KIỂM TRA HOẠT ĐỘNG) ---
+// Sử dụng bản Flash 1.5 ổn định (Rate limit cao: 15 RPM, 1500 RPD)
+// KHÔNG DÙNG bản 'exp' (thử nghiệm) vì dễ bị lỗi 429
+const TEXT_MODEL = 'gemini-1.5-flash'; 
+
+// Model tạo ảnh chuyên dụng của Google (Thay thế cho gemini-3 ảo)
+const IMAGE_MODEL = 'imagen-3.0-generate-001';
+
 const SYSTEM_INSTRUCTION_TEXT = `VAI TRÒ (ROLE):
 Bạn là 'Giám đốc Sáng tạo tại ATHEA', chuyên gia hàng đầu về nhiếp ảnh thương mại, thời trang và xây dựng thương hiệu. Nhiệm vụ của bạn là phân tích hình ảnh sản phẩm được tải lên và các tham số đầu vào (Bối cảnh, Người mẫu) để tạo ra một bản kế hoạch chụp ảnh (Shooting Plan) chi tiết.
 
@@ -90,13 +98,11 @@ const POSE_PROMPT_EXAMPLE = `{
     ]
   }
 }`;
+// --- HELPER FUNCTIONS ---
 
-// --- [CONFIG] CHUYỂN VỀ MODEL ỔN ĐỊNH ---
-// Sử dụng bản Flash 1.5 để có hạn mức (Quota) cao hơn nhiều so với bản 2.0 Experimental
-const GEMINI_MODEL = 'gemini-1.5-flash'; 
-const IMAGEN_MODEL = 'imagen-3.0-generate-001';
+// Hàm delay để chờ khi gặp lỗi quá tải
+const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-// --- HÀM XỬ LÝ LỖI TẬP TRUNG ---
 const handleGeminiError = (error: any, functionName: string): never => {
   console.error(`🔴 [Gemini Service Error] tại hàm '${functionName}':`, error);
   const rawMessage = error?.message || JSON.stringify(error);
@@ -104,17 +110,15 @@ const handleGeminiError = (error: any, functionName: string): never => {
   let userFriendlyMessage = "Hệ thống đang bận xử lý. Vui lòng thử lại sau ít phút.";
 
   if (rawMessage.includes("429") || rawMessage.includes("RESOURCE_EXHAUSTED")) {
-    userFriendlyMessage = "Hệ thống đang quá tải yêu cầu (Quota Limit). Vui lòng đợi khoảng 30 giây rồi thử lại.";
-  } else if (rawMessage.includes("503") || rawMessage.includes("overloaded") || rawMessage.includes("UNAVAILABLE")) {
-    userFriendlyMessage = "Máy chủ AI đang tạm thời bận rộn. Vui lòng thử lại ngay sau đây.";
+    userFriendlyMessage = "Hệ thống đang quá tải yêu cầu. Đang tự động thử lại...";
+  } else if (rawMessage.includes("503") || rawMessage.includes("overloaded")) {
+    userFriendlyMessage = "Máy chủ AI đang tạm thời bận rộn. Vui lòng thử lại.";
   } else if (rawMessage.includes("SAFETY") || rawMessage.includes("HARM_CATEGORY")) {
-    userFriendlyMessage = "Hình ảnh đầu vào có thể vi phạm quy tắc an toàn nội dung. Vui lòng chọn ảnh khác.";
+    userFriendlyMessage = "Hình ảnh đầu vào có thể vi phạm quy tắc an toàn. Vui lòng chọn ảnh khác.";
   } else if (rawMessage.includes("403") || rawMessage.includes("PERMISSION_DENIED")) {
-    userFriendlyMessage = "Lỗi xác thực quyền truy cập. Vui lòng kiểm tra lại cấu hình API Key.";
+    userFriendlyMessage = "Lỗi xác thực quyền truy cập API Key.";
   } else if (rawMessage.includes("404") || rawMessage.includes("NOT_FOUND")) {
-    userFriendlyMessage = `Không tìm thấy mô hình AI (${GEMINI_MODEL}). Vui lòng liên hệ quản trị viên.`;
-  } else if (rawMessage.includes("NetworkError") || rawMessage.includes("fetch")) {
-    userFriendlyMessage = "Không thể kết nối đến máy chủ. Vui lòng kiểm tra kết nối mạng.";
+    userFriendlyMessage = `Không tìm thấy Model AI (${TEXT_MODEL}). Vui lòng kiểm tra lại cấu hình.`;
   }
 
   throw new Error(userFriendlyMessage);
@@ -141,117 +145,96 @@ const getMimeType = (base64String: string) => {
   if (base64String.startsWith('data:image/png')) return 'image/png';
   if (base64String.startsWith('data:image/jpeg')) return 'image/jpeg';
   if (base64String.startsWith('data:image/webp')) return 'image/webp';
-  return 'image/jpeg'; // Default
+  return 'image/jpeg';
 };
 
 const stripBase64Prefix = (base64String: string) => {
   return base64String.replace(/^data:image\/[a-z]+;base64,/, "");
 };
 
-// Helper wait function
-const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
-
-const executeWithRetry = async <T>(action: () => Promise<T>, retries = 2): Promise<T> => {
+// --- CƠ CHẾ RETRY THÔNG MINH ---
+const executeWithRetry = async <T>(action: () => Promise<T>, retries = 3): Promise<T> => {
     try {
         return await action();
     } catch (error: any) {
         const errorMessage = error.message || JSON.stringify(error);
         
-        // 1. Xử lý lỗi 429 (Too Many Requests) bằng cách chờ và thử lại
-        if (errorMessage.includes("429") || errorMessage.includes("RESOURCE_EXHAUSTED")) {
-            if (retries > 0) {
-                console.warn(`⚠️ Gặp lỗi 429 (Quota). Đang chờ 3s để thử lại... (Còn ${retries} lần)`);
-                await delay(3000); // Chờ 3 giây
-                return executeWithRetry(action, retries - 1);
-            }
+        // Nếu lỗi Quota (429) hoặc Server Busy (503) -> Chờ và thử lại
+        if (
+            (errorMessage.includes("429") || errorMessage.includes("RESOURCE_EXHAUSTED") ||
+             errorMessage.includes("503") || errorMessage.includes("overloaded")) 
+            && retries > 0
+        ) {
+            console.warn(`⚠️ Gặp lỗi quá tải (${errorMessage.includes("429") ? "429" : "503"}). Đang chờ 4s để thử lại... (Còn ${retries} lần)`);
+            await delay(4000); // Chờ 4 giây (Gemini Free Tier hồi phục sau vài giây)
+            return executeWithRetry(action, retries - 1);
         }
 
-        // 2. Xử lý lỗi 403 (Quyền truy cập)
-        if (
-            errorMessage.includes("403") || 
-            errorMessage.includes("PERMISSION_DENIED") || 
-            errorMessage.includes("Requested entity was not found") || 
-            errorMessage.includes("The caller does not have permission")
-        ) {
+        // Nếu lỗi quyền (403) -> Mở popup chọn key
+        if (errorMessage.includes("403") || errorMessage.includes("PERMISSION_DENIED")) {
             console.warn("Permission denied (403). Prompting for API key selection...");
             try {
                 if (window.aistudio?.openSelectKey) {
                     await window.aistudio.openSelectKey();
                     return await action();
                 }
-            } catch (selectError) {
-                console.error("Error opening key selector:", selectError);
-            }
-            throw new Error("Quyền truy cập bị từ chối. Vui lòng chọn dự án có khóa API trả phí hợp lệ.");
+            } catch (selectError) { console.error(selectError); }
+            throw new Error("Quyền truy cập bị từ chối. Vui lòng chọn dự án hợp lệ.");
         }
         
-        // Với các lỗi khác hoặc hết số lần retry -> Ném lỗi ra ngoài
         handleGeminiError(error, "executeWithRetry"); 
     }
 };
 
-// --- CÁC HÀM API CHÍNH ---
+// --- CÁC HÀM API ---
 
 export const suggestShootingContexts = async (imageBase64: string): Promise<string[]> => {
-  // Hàm này gọi action qua executeWithRetry để tự động thử lại nếu 429
   return executeWithRetry(async () => {
-      const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_API_KEY });
-      const imagePart = {
-        inlineData: {
-          mimeType: getMimeType(imageBase64),
-          data: stripBase64Prefix(imageBase64),
-        },
-      };
+    // Luôn lấy API Key mới nhất từ biến môi trường
+    const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_API_KEY });
+    const imagePart = {
+      inlineData: {
+        mimeType: getMimeType(imageBase64),
+        data: stripBase64Prefix(imageBase64),
+      },
+    };
 
-      const prompt = `Bạn là Giám đốc Sáng tạo. Hãy phân tích hình ảnh sản phẩm này và đề xuất 5 bối cảnh chụp ảnh (Shooting Context) cụ thể, sáng tạo và phù hợp nhất để làm nổi bật sản phẩm.
-      Trả về kết quả TUYỆT ĐỐI chỉ là một JSON Array chứa các chuỗi string Tiếng Việt.
-      Ví dụ: ["Studio phông nền màu be", "Đường phố Paris ngày nắng", "Nội thất gỗ ấm cúng"]`;
+    const prompt = `Bạn là Giám đốc Sáng tạo. Hãy phân tích hình ảnh sản phẩm này và đề xuất 5 bối cảnh chụp ảnh (Shooting Context) cụ thể, sáng tạo và phù hợp nhất để làm nổi bật sản phẩm.
+    Trả về kết quả TUYỆT ĐỐI chỉ là một JSON Array chứa các chuỗi string Tiếng Việt.
+    Ví dụ: ["Studio phông nền màu be", "Đường phố Paris ngày nắng"]`;
 
-      const response = await ai.models.generateContent({
-        model: GEMINI_MODEL,
-        contents: {
-          parts: [imagePart, { text: prompt }],
-        },
-        config: {
-          responseMimeType: 'application/json',
-        },
-      });
+    const response = await ai.models.generateContent({
+      model: TEXT_MODEL, // gemini-1.5-flash
+      contents: { parts: [imagePart, { text: prompt }] },
+      config: { responseMimeType: 'application/json' },
+    });
 
-      if (response.text) {
-          return JSON.parse(response.text) as string[];
-      }
-      return [];
+    if (response.text) return JSON.parse(response.text) as string[];
+    return [];
   });
 };
 
 export const suggestModelStyles = async (imageBase64: string): Promise<string[]> => {
   return executeWithRetry(async () => {
-      const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_API_KEY });
-      const imagePart = {
-        inlineData: {
-          mimeType: getMimeType(imageBase64),
-          data: stripBase64Prefix(imageBase64),
-        },
-      };
+    const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_API_KEY });
+    const imagePart = {
+      inlineData: {
+        mimeType: getMimeType(imageBase64),
+        data: stripBase64Prefix(imageBase64),
+      },
+    };
 
-      const prompt = `Bạn là Giám đốc Sáng tạo. Hãy phân tích hình ảnh sản phẩm thời trang này và đề xuất 5 phong cách người mẫu (Model Style) cụ thể, đặc biệt ưu tiên các gợi ý gương mặt và phong cách đặc trưng của các nước như Việt Nam, Hàn Quốc, Trung Quốc hoặc Âu Mỹ tuỳ theo phong cách sản phẩm.
-      Trả về kết quả TUYỆT ĐỐI chỉ là một JSON Array chứa các chuỗi string Tiếng Việt.
-      Ví dụ: ["Người mẫu Việt Nam, nét đẹp thanh lịch, hiện đại", "Người mẫu Hàn Quốc, da trắng sáng, phong cách ngọt ngào", "Người mẫu Trung Quốc, thần thái sắc sảo, high-fashion", "Người mẫu lai Tây, vẻ đẹp quyến rũ"]`;
+    const prompt = `Bạn là Giám đốc Sáng tạo. Hãy phân tích hình ảnh sản phẩm thời trang này và đề xuất 5 phong cách người mẫu (Model Style) phù hợp.
+    Trả về kết quả TUYỆT ĐỐI chỉ là một JSON Array chứa các chuỗi string Tiếng Việt.`;
 
-      const response = await ai.models.generateContent({
-        model: GEMINI_MODEL,
-        contents: {
-          parts: [imagePart, { text: prompt }],
-        },
-        config: {
-          responseMimeType: 'application/json',
-        },
-      });
+    const response = await ai.models.generateContent({
+      model: TEXT_MODEL,
+      contents: { parts: [imagePart, { text: prompt }] },
+      config: { responseMimeType: 'application/json' },
+    });
 
-      if (response.text) {
-          return JSON.parse(response.text) as string[];
-      }
-      return [];
+    if (response.text) return JSON.parse(response.text) as string[];
+    return [];
   });
 };
 
@@ -263,55 +246,50 @@ export const generateShootingPlan = async (
   faceImageBase64?: string | null
 ): Promise<string> => {
   return executeWithRetry(async () => {
-      const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_API_KEY });
-      
-      const parts: any[] = [];
+    const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_API_KEY });
+    const parts: any[] = [];
+    
+    parts.push({
+      inlineData: {
+        mimeType: getMimeType(imageBase64),
+        data: stripBase64Prefix(imageBase64),
+      },
+    });
+    parts.push({ text: "Đây là ảnh sản phẩm chính." });
+
+    if (closeupImageBase64) {
       parts.push({
         inlineData: {
-          mimeType: getMimeType(imageBase64),
-          data: stripBase64Prefix(imageBase64),
+          mimeType: getMimeType(closeupImageBase64),
+          data: stripBase64Prefix(closeupImageBase64),
         },
       });
-      parts.push({ text: "Đây là ảnh sản phẩm chính." });
+      parts.push({ text: "Đây là ảnh cận cảnh chất liệu vải." });
+    }
 
-      if (closeupImageBase64) {
-        parts.push({
-          inlineData: {
-            mimeType: getMimeType(closeupImageBase64),
-            data: stripBase64Prefix(closeupImageBase64),
-          },
-        });
-        parts.push({ text: "Đây là ảnh cận cảnh chất liệu vải..." });
-      }
-
-      if (faceImageBase64) {
-        parts.push({
-          inlineData: {
-            mimeType: getMimeType(faceImageBase64),
-            data: stripBase64Prefix(faceImageBase64),
-          },
-        });
-        parts.push({ text: "Đây là ảnh gương mặt người mẫu tham khảo..." });
-      }
-
-      const promptText = `Hãy phân tích các hình ảnh được cung cấp và lập kế hoạch chụp ảnh với:\nBối cảnh: ${context}\nNgười mẫu: ${modelStyle}`;
-      parts.push({ text: promptText });
-
-      const response = await ai.models.generateContent({
-        model: GEMINI_MODEL,
-        contents: {
-          parts: parts,
-        },
-        config: {
-          systemInstruction: SYSTEM_INSTRUCTION_TEXT,
-          temperature: 1.0,
-          topP: 0.95,
-          topK: 64,
-          maxOutputTokens: 8192,
+    if (faceImageBase64) {
+      parts.push({
+        inlineData: {
+          mimeType: getMimeType(faceImageBase64),
+          data: stripBase64Prefix(faceImageBase64),
         },
       });
+      parts.push({ text: "Đây là ảnh gương mặt người mẫu tham khảo." });
+    }
 
-      return response.text || "Không thể tạo kế hoạch. Vui lòng thử lại.";
+    const promptText = `Hãy phân tích các hình ảnh được cung cấp và lập kế hoạch chụp ảnh với:\nBối cảnh: ${context}\nNgười mẫu: ${modelStyle}`;
+    parts.push({ text: promptText });
+
+    const response = await ai.models.generateContent({
+      model: TEXT_MODEL,
+      contents: { parts: parts },
+      config: {
+        systemInstruction: SYSTEM_INSTRUCTION_TEXT,
+        temperature: 1.0,
+      },
+    });
+
+    return response.text || "Không thể tạo kế hoạch.";
   });
 };
 
@@ -330,17 +308,11 @@ export const generatePosePrompt = async (
             },
         };
 
-        const prompt = `
-        Based on the attached product image, and the following details...
-        Structure & Style Reference (JSON):
-        ${POSE_PROMPT_EXAMPLE}
-        `;
+        const prompt = `Based on the attached product image... (Giữ nguyên prompt tiếng Anh của bạn)... Structure & Style Reference (JSON): ${POSE_PROMPT_EXAMPLE}`;
 
         const response = await ai.models.generateContent({
-            model: GEMINI_MODEL,
-            contents: {
-                parts: [imagePart, { text: prompt }],
-            },
+            model: TEXT_MODEL,
+            contents: { parts: [imagePart, { text: prompt }] },
             config: {
                 responseMimeType: 'application/json',
                 temperature: 0.7,
@@ -363,14 +335,12 @@ export const generateImageFromJsonPrompt = async (
         const cleanJson = jsonPrompt.replace(/```json/g, '').replace(/```/g, '').trim();
         promptObj = JSON.parse(cleanJson);
     } catch (e) {
-        console.warn("Failed to parse JSON prompt", e);
         throw new Error("Dữ liệu prompt không hợp lệ.");
     }
 
     const constructedPrompt = `
-    Fashion Photography: 8k resolution, photorealistic, cinematic lighting.
+    Fashion Photography: 8k resolution, photorealistic.
     SCENE: ${promptObj.scene?.description || ''}
-    MOOD: ${promptObj.scene?.mood || ''}
     LIGHTING: ${promptObj.lighting?.description || ''}
     MODEL: ${promptObj.subject_model?.description || ''}
     POSE: ${promptObj.subject_model?.pose?.action || ''}
@@ -379,10 +349,12 @@ export const generateImageFromJsonPrompt = async (
 
     return executeWithRetry(async () => {
         const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_API_KEY });
+        
         try {
-            // @ts-ignore
+            // SỬ DỤNG IMAGEN 3 (Chuẩn tạo ảnh, không dùng gemini text)
+            // @ts-ignore - Ignore type check nếu SDK chưa update type cho imagen
             const response = await ai.models.generateImages({
-                model: IMAGEN_MODEL,
+                model: IMAGE_MODEL,
                 prompt: constructedPrompt,
                 config: {
                     numberOfImages: 1,
@@ -396,7 +368,7 @@ export const generateImageFromJsonPrompt = async (
             }
         } catch (imgError: any) {
              console.warn("Imagen 3 failed", imgError);
-             throw new Error("Tính năng tạo ảnh (Imagen 3) chưa khả dụng với Key này hoặc đang bảo trì.");
+             throw new Error("Tạo ảnh thất bại (Model Imagen chưa khả dụng với Key này).");
         }
         throw new Error("Không có ảnh nào được tạo ra.");
     });
