@@ -182,7 +182,7 @@ const executeWithRetry = async <T>(action: () => Promise<T>): Promise<T> => {
 
 export const suggestShootingContexts = async (imageBase64: string): Promise<string[]> => {
   try {
-    const ai = new GoogleGenAI({ apiKey: process.env.NEXT_PUBLIC_API_KEY });
+    const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_API_KEY });
     const imagePart = {
       inlineData: {
         mimeType: getMimeType(imageBase64),
@@ -216,7 +216,7 @@ export const suggestShootingContexts = async (imageBase64: string): Promise<stri
 
 export const suggestModelStyles = async (imageBase64: string): Promise<string[]> => {
   try {
-    const ai = new GoogleGenAI({ apiKey: process.env.NEXT_PUBLIC_API_KEY });
+    const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_API_KEY });
     const imagePart = {
       inlineData: {
         mimeType: getMimeType(imageBase64),
@@ -256,7 +256,7 @@ export const generateShootingPlan = async (
   faceImageBase64?: string | null
 ): Promise<string> => {
   try {
-    const ai = new GoogleGenAI({ apiKey: process.env.NEXT_PUBLIC_API_KEY });
+    const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_API_KEY });
     
     // Construct parts array
     const parts: any[] = [];
@@ -323,7 +323,7 @@ export const generatePosePrompt = async (
     userContext: string
 ): Promise<string> => {
     try {
-        const ai = new GoogleGenAI({ apiKey: process.env.NEXT_PUBLIC_API_KEY });
+        const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_API_KEY });
         const imagePart = {
             inlineData: {
                 mimeType: getMimeType(imageBase64),
@@ -409,7 +409,7 @@ export const generateImageFromJsonPrompt = async (
 
     // 4. Call API with Retry Logic
     return executeWithRetry(async () => {
-        const ai = new GoogleGenAI({ apiKey: process.env.NEXT_PUBLIC_API_KEY });
+        const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_API_KEY });
         const response = await ai.models.generateContent({
             model: 'gemini-3-pro-image-preview',
             contents: {
