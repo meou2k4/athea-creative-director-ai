@@ -182,6 +182,7 @@ const executeWithRetry = async <T>(action: () => Promise<T>): Promise<T> => {
 
 export const suggestShootingContexts = async (imageBase64: string): Promise<string[]> => {
   try {
+    console.log("DEBUG API KEY:", import.meta.env.VITE_API_KEY ? "Đã có Key" : "Key đang bị Rỗng/Undefined");
     const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_API_KEY });
     const imagePart = {
       inlineData: {
@@ -195,7 +196,7 @@ export const suggestShootingContexts = async (imageBase64: string): Promise<stri
     Ví dụ: ["Studio phông nền màu be", "Đường phố Paris ngày nắng", "Nội thất gỗ ấm cúng"]`;
 
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: 'gemini-1.5-flash',
       contents: {
         parts: [imagePart, { text: prompt }],
       },
@@ -216,6 +217,7 @@ export const suggestShootingContexts = async (imageBase64: string): Promise<stri
 
 export const suggestModelStyles = async (imageBase64: string): Promise<string[]> => {
   try {
+    console.log("DEBUG API KEY:", import.meta.env.VITE_API_KEY ? "Đã có Key" : "Key đang bị Rỗng/Undefined");
     const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_API_KEY });
     const imagePart = {
       inlineData: {
@@ -229,7 +231,7 @@ export const suggestModelStyles = async (imageBase64: string): Promise<string[]>
     Ví dụ: ["Người mẫu Việt Nam, nét đẹp thanh lịch, hiện đại", "Người mẫu Hàn Quốc, da trắng sáng, phong cách ngọt ngào", "Người mẫu Trung Quốc, thần thái sắc sảo, high-fashion", "Người mẫu lai Tây, vẻ đẹp quyến rũ"]`;
 
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: 'gemini-1.5-flash',
       contents: {
         parts: [imagePart, { text: prompt }],
       },
@@ -256,6 +258,7 @@ export const generateShootingPlan = async (
   faceImageBase64?: string | null
 ): Promise<string> => {
   try {
+    console.log("DEBUG API KEY:", import.meta.env.VITE_API_KEY ? "Đã có Key" : "Key đang bị Rỗng/Undefined");
     const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_API_KEY });
     
     // Construct parts array
@@ -297,7 +300,7 @@ export const generateShootingPlan = async (
     parts.push({ text: promptText });
 
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: 'gemini-1.5-flash',
       contents: {
         parts: parts,
       },
@@ -323,6 +326,7 @@ export const generatePosePrompt = async (
     userContext: string
 ): Promise<string> => {
     try {
+        console.log("DEBUG API KEY:", import.meta.env.VITE_API_KEY ? "Đã có Key" : "Key đang bị Rỗng/Undefined");
         const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_API_KEY });
         const imagePart = {
             inlineData: {
@@ -350,7 +354,7 @@ export const generatePosePrompt = async (
         `;
 
         const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
+            model: 'gemini-1.5-flash',
             contents: {
                 parts: [imagePart, { text: prompt }],
             },
@@ -409,6 +413,7 @@ export const generateImageFromJsonPrompt = async (
 
     // 4. Call API with Retry Logic
     return executeWithRetry(async () => {
+        console.log("DEBUG API KEY:", import.meta.env.VITE_API_KEY ? "Đã có Key" : "Key đang bị Rỗng/Undefined");
         const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_API_KEY });
         const response = await ai.models.generateContent({
             model: 'gemini-3-pro-image-preview',
