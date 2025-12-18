@@ -32,8 +32,8 @@ async function generateUniqueId(sheet) {
   return generateRandomId(12);
 }
 
-// --- HÀM GỬI EMAIL THÔNG BÁO (CHẠY NGẦM) ---
-async function sendAdminNotification(name, email) {
+// --- HÀM GỬI EMAIL THÔNG BÁO CHO QUẢN LÝ (CHẠY NGẦM) ---
+async function sendAdminNotification(name, email, userId) {
   if (!process.env.GMAIL_USER || !process.env.GMAIL_APP_PASSWORD) {
     console.log("⚠️ Bỏ qua gửi email do thiếu cấu hình ENV");
     return;
@@ -48,26 +48,39 @@ async function sendAdminNotification(name, email) {
       }
     });
 
+    const sheetUrl = `https://docs.google.com/spreadsheets/d/${process.env.GOOGLE_SHEET_ID}`;
+    const timestamp = new Date().toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' });
+
     const mailOptions = {
       from: `"ATHEA System" <${process.env.GMAIL_USER}>`,
       to: 'Tungdinhvan1606@gmail.com',
       subject: '🔔 ATHEA: Có thành viên mới đăng ký!',
       html: `
-        <div style="font-family: sans-serif; line-height: 1.6;">
+        <div style="font-family: sans-serif; line-height: 1.6; max-width: 600px; margin: 0 auto;">
           <h3 style="color: #2c3e50;">🚀 Có người dùng mới đăng ký!</h3>
-          <p><b>Họ tên:</b> ${name}</p>
-          <p><b>Email:</b> ${email}</p>
-          <p><b>Thời gian:</b> ${new Date().toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' })}</p>
+          <div style="background-color: #f8f9fa; padding: 15px; border-radius: 5px; margin: 20px 0;">
+            <p><b>ID:</b> ${userId}</p>
+            <p><b>Họ tên:</b> ${name}</p>
+            <p><b>Email:</b> ${email}</p>
+            <p><b>Thời gian:</b> ${timestamp}</p>
+            <p><b>Trạng thái:</b> <span style="color: #f39c12; font-weight: bold;">PENDING</span></p>
+          </div>
           <hr>
-          <p>Vui lòng duyệt tại: <a href="https://docs.google.com/spreadsheets/d/${process.env.GOOGLE_SHEET_ID}">Google Sheet Link</a></p>
+          <p style="margin-top: 20px;">
+            <a href="${sheetUrl}" 
+               style="background-color: #3498db; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block;">
+              📋 Mở Google Sheet để duyệt
+            </a>
+          </p>
         </div>
       `
     };
 
     const info = await transporter.sendMail(mailOptions);
-    console.log("✅ [Email] Đã gửi thông báo Admin:", info.messageId);
+    console.log("✅ [Email] Đã gửi thông báo cho quản lý:", info.messageId);
   } catch (error) {
-    console.error("❌ [Email] Lỗi gửi mail:", error.message);
+    console.error("❌ [Email] Lỗi gửi mail cho quản lý:", error.message);
+    // Không throw error để không ảnh hưởng đến response cho client
   }
 }
 
@@ -194,8 +207,10 @@ export default async function handler(req, res) {
 
       if (rowAdded) {
         console.log('✅ Đăng ký thành công');
-        // Gửi email ngầm, không dùng await để trả kết quả cho Client ngay lập tức
-        sendAdminNotification(name, email);
+        // Gửi email thông báo cho quản lý (chạy ngầm, không chặn response)
+        sendAdminNotification(trimmedName, email, uniqueId).catch(err => {
+          console.error('❌ [Email] Lỗi khi gửi email thông báo:', err.message);
+        });
         
         return res.status(200).json({ 
           success: true, 
