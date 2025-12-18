@@ -14,6 +14,36 @@ const PORT = process.env.PORT || 3001;
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 
+// --- HÀM TẠO ID NGẪU NHIÊN ---
+function generateRandomId(length = 8) {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+  let result = '';
+  for (let i = 0; i < length; i++) {
+    result += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return result;
+}
+
+// --- HÀM TẠO ID DUY NHẤT ---
+async function generateUniqueId(sheet) {
+  let attempts = 0;
+  const maxAttempts = 10;
+  
+  while (attempts < maxAttempts) {
+    const newId = generateRandomId(8);
+    const rows = await sheet.getRows();
+    const isExist = rows.some(row => row.get('ID') === newId);
+    
+    if (!isExist) {
+      return newId;
+    }
+    attempts++;
+  }
+  
+  // Nếu sau 10 lần vẫn trùng, tăng độ dài ID
+  return generateRandomId(12);
+}
+
 // --- HÀM GỬI EMAIL THÔNG BÁO (CHẠY NGẦM) ---
 async function sendAdminNotification(name, email) {
   if (!process.env.GMAIL_USER || !process.env.GMAIL_APP_PASSWORD) {
@@ -119,12 +149,17 @@ app.post('/api/auth', async (req, res) => {
         return res.status(400).json({ message: 'Email này đã tồn tại trên hệ thống' });
       }
 
+      // Tạo ID ngẫu nhiên duy nhất
+      const uniqueId = await generateUniqueId(sheet);
+      console.log(`🆔 Đã tạo ID: ${uniqueId}`);
+
       // Thêm dòng mới với logic xử lý Timeout
       let rowAdded = false;
       try {
         console.log('➕ Đang thêm dòng mới...');
         // Tạo promise addRow với timeout 15s
         const addRowPromise = sheet.addRow({
+          ID: uniqueId,
           Email: normalizedEmail,
           Password: password,
           Name: trimmedName,
