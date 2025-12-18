@@ -84,14 +84,47 @@ const App: React.FC = () => {
 
   // Check for persistent session - giữ lại từ code cũ
   useEffect(() => {
-    const storedUser = localStorage.getItem('athea_user');
-    if (storedUser) {
-      try {
-        setUser(JSON.parse(storedUser));
-      } catch (e) {
-        console.error("Failed to parse user session");
+    const checkSession = async () => {
+      const storedUser = localStorage.getItem('athea_user');
+      if (storedUser) {
+        try {
+          const parsedUser: User = JSON.parse(storedUser);
+          
+          // 1. Set user tạm thời để UI hiển thị ngay (UX nhanh)
+          setUser(parsedUser);
+
+          // 2. Gọi API để kiểm tra xem ID này còn tồn tại/hợp lệ trong Sheet không
+          const res = await fetch('/api/auth', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+              action: 'verify', 
+              id: parsedUser.id 
+            }),
+          });
+
+          // Nếu server trả về lỗi (404 Not Found hoặc 403 Forbidden)
+          if (!res.ok) {
+            console.warn('Session verification failed. Logging out...');
+            handleLogout(); // Xóa data và đá ra màn hình login
+          } else {
+            // Optional: Cập nhật lại thông tin user nếu admin có đổi tên trong sheet
+            const data = await res.json();
+            if (data.success && data.user) {
+              const updatedUser = { ...parsedUser, ...data.user };
+              setUser(updatedUser);
+              localStorage.setItem('athea_user', JSON.stringify(updatedUser));
+            }
+          }
+        } catch (e) {
+          console.error("Failed to verify session:", e);
+          // Lưu ý: Nếu lỗi mạng (network error), ta có thể chọn không logout 
+          // để user vẫn dùng được offline hoặc show thông báo lỗi.
+          // Ở đây tôi giữ nguyên user nếu lỗi mạng, chỉ logout khi parse lỗi.
+        }
       }
-    }
+    };
+    checkSession();
   }, []);
 
   const handleLogin = (newUser: User) => {

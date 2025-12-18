@@ -1,6 +1,7 @@
 
 // User interface - giữ lại từ code cũ
 export interface User {
+  id: string;
   name: string;
   email: string;
 }

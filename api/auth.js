@@ -116,8 +116,8 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { action, email, password, name } = req.body;
-    console.log(`📥 Request: ${action} | User: ${email}`);
+    const { action, email, password, name, id } = req.body;
+    console.log(`📥 Request: ${action} | User: ${email || id}`);
 
     // 1. Khởi tạo kết nối Google Sheets
     const privateKey = process.env.GOOGLE_PRIVATE_KEY?.replace(/\\n/g, '\n');
@@ -243,10 +243,9 @@ export default async function handler(req, res) {
         return res.status(400).json({ message: 'Thiếu email hoặc mật khẩu' });
       }
 
-      // Chuẩn hóa email: trim và chuyển thành chữ hoa để so sánh
       const normalizedEmail = email.trim().toUpperCase();
-      
       const rows = await sheet.getRows();
+      
       const user = rows.find(row => 
         row.get('Email')?.toUpperCase() === normalizedEmail && row.get('Password') === password
       );
@@ -263,13 +262,49 @@ export default async function handler(req, res) {
         });
       }
 
+      // UPDATE: Trả về thêm ID
       return res.status(200).json({ 
         success: true, 
-        user: { name: user.get('Name'), email: user.get('Email') } 
+        user: { 
+          id: user.get('ID'), // Lấy ID từ sheet
+          name: user.get('Name'), 
+          email: user.get('Email') 
+        } 
       });
     }
 
-    // Nếu action không phải register hay login
+    // --- XỬ LÝ KIỂM TRA SESSION (Mới) ---
+    if (action === 'verify') {
+      if (!id) {
+        return res.status(400).json({ message: 'Thiếu ID người dùng' });
+      }
+
+      const rows = await sheet.getRows();
+      // Tìm user theo ID
+      const user = rows.find(row => row.get('ID') === id);
+
+      if (!user) {
+        // Không tìm thấy ID trong sheet -> Tài khoản đã bị xóa
+        return res.status(404).json({ success: false, message: 'Tài khoản không tồn tại' });
+      }
+
+      const status = user.get('Status');
+      if (status !== 'APPROVED') {
+        // Tài khoản bị khóa hoặc chưa duyệt
+        return res.status(403).json({ success: false, message: 'Tài khoản chưa được duyệt hoặc bị khóa' });
+      }
+
+      // Tài khoản hợp lệ -> Trả về thông tin mới nhất (để cập nhật nếu cần)
+      return res.status(200).json({ 
+        success: true, 
+        user: { 
+          id: user.get('ID'),
+          name: user.get('Name'), 
+          email: user.get('Email') 
+        } 
+      });
+    }
+
     return res.status(400).json({ message: 'Hành động không hợp lệ' });
 
   } catch (error) {
