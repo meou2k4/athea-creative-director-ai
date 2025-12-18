@@ -32,14 +32,19 @@ async function generateUniqueId(sheet) {
   return generateRandomId(12);
 }
 
-// --- HÀM GỬI EMAIL THÔNG BÁO CHO QUẢN LÝ (CHẠY NGẦM) ---
+// --- HÀM GỬI EMAIL THÔNG BÁO CHO QUẢN LÝ ---
 async function sendAdminNotification(name, email, userId) {
+  console.log('📧 [Email] Kiểm tra cấu hình ENV...');
+  console.log('📧 [Email] GMAIL_USER:', process.env.GMAIL_USER ? 'Đã cấu hình' : 'THIẾU');
+  console.log('📧 [Email] GMAIL_APP_PASSWORD:', process.env.GMAIL_APP_PASSWORD ? 'Đã cấu hình' : 'THIẾU');
+  
   if (!process.env.GMAIL_USER || !process.env.GMAIL_APP_PASSWORD) {
-    console.log("⚠️ Bỏ qua gửi email do thiếu cấu hình ENV");
+    console.error("❌ [Email] Bỏ qua gửi email do thiếu cấu hình ENV (GMAIL_USER hoặc GMAIL_APP_PASSWORD)");
     return;
   }
 
   try {
+    console.log('📧 [Email] Đang khởi tạo transporter...');
     const transporter = nodemailer.createTransport({
       service: 'gmail',
       auth: {
@@ -76,11 +81,15 @@ async function sendAdminNotification(name, email, userId) {
       `
     };
 
+    console.log('📧 [Email] Đang gửi email đến:', 'Tungdinhvan1606@gmail.com');
     const info = await transporter.sendMail(mailOptions);
-    console.log("✅ [Email] Đã gửi thông báo cho quản lý:", info.messageId);
+    console.log("✅ [Email] Đã gửi thông báo cho quản lý thành công. MessageId:", info.messageId);
+    return info;
   } catch (error) {
     console.error("❌ [Email] Lỗi gửi mail cho quản lý:", error.message);
-    // Không throw error để không ảnh hưởng đến response cho client
+    console.error("❌ [Email] Error details:", JSON.stringify(error, null, 2));
+    // Throw error để caller có thể xử lý
+    throw error;
   }
 }
 
@@ -207,10 +216,17 @@ export default async function handler(req, res) {
 
       if (rowAdded) {
         console.log('✅ Đăng ký thành công');
-        // Gửi email thông báo cho quản lý (chạy ngầm, không chặn response)
-        sendAdminNotification(trimmedName, email, uniqueId).catch(err => {
-          console.error('❌ [Email] Lỗi khi gửi email thông báo:', err.message);
-        });
+        
+        // Gửi email thông báo cho quản lý (đợi hoàn thành để đảm bảo email được gửi)
+        try {
+          console.log('📧 [Email] Bắt đầu gửi email thông báo cho quản lý...');
+          await sendAdminNotification(trimmedName, email, uniqueId);
+          console.log('✅ [Email] Đã gửi email thông báo thành công');
+        } catch (emailError) {
+          // Log lỗi nhưng không fail toàn bộ request
+          console.error('❌ [Email] Lỗi khi gửi email thông báo:', emailError.message);
+          console.error('❌ [Email] Stack trace:', emailError.stack);
+        }
         
         return res.status(200).json({ 
           success: true, 
