@@ -36,74 +36,96 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
     }
 
     try {
-      // 2. Gọi API Serverless của Vercel (file api/auth.js)
-      const res = await fetch('/api/auth', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          action: isRegistering ? 'register' : 'login',
-          email,
-          password,
-          name: isRegistering ? name : undefined,
-        }),
-      });
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        // Nếu API trả về lỗi (400, 401, 403...)
-        throw new Error(data.message || 'Có lỗi xảy ra');
+      // 2. Local Authentication (Development mode - không cần API)
+      // Lưu users vào localStorage
+      const storageKey = 'athea_local_users';
+      let users: Array<{email: string, password: string, name: string, status: string}> = [];
+      
+      try {
+        const stored = localStorage.getItem(storageKey);
+        if (stored) {
+          users = JSON.parse(stored);
+        }
+      } catch (e) {
+        console.error('Error reading users from localStorage', e);
       }
 
-      // 3. Xử lý thành công
       if (isRegistering) {
-        // Đăng ký thành công -> Thông báo chờ duyệt
-        setSuccessMsg(data.message); // "Đăng ký thành công! Vui lòng chờ Admin duyệt."
-        setIsRegistering(false);     // Chuyển về form đăng nhập
+        // Đăng ký
+        const existingUser = users.find(u => u.email === email);
+        if (existingUser) {
+          setIsLoading(false);
+          setError('Email này đã được đăng ký');
+          return;
+        }
+
+        // Thêm user mới
+        users.push({
+          email,
+          password, // Trong production nên hash password
+          name,
+          status: 'APPROVED' // Auto approve trong dev mode
+        });
+        localStorage.setItem(storageKey, JSON.stringify(users));
+        
+        setSuccessMsg('Đăng ký thành công! Bạn có thể đăng nhập ngay.');
+        setIsRegistering(false);
         setEmail('');
         setPassword('');
         setName('');
       } else {
-        // Đăng nhập thành công -> Vào app
-        const user: User = {
-          email: data.user.email,
-          name: data.user.name,
+        // Đăng nhập
+        const user = users.find(u => u.email === email && u.password === password);
+        if (!user) {
+          setIsLoading(false);
+          setError('Sai email hoặc mật khẩu');
+          return;
+        }
+
+        if (user.status !== 'APPROVED') {
+          setIsLoading(false);
+          setError(`Tài khoản đang ở trạng thái: ${user.status}. Vui lòng liên hệ Admin.`);
+          return;
+        }
+
+        // Đăng nhập thành công
+        const userData: User = {
+          email: user.email,
+          name: user.name,
         };
-        onLogin(user);
+        onLogin(userData);
       }
 
     } catch (err: any) {
-      setError(err.message);
+      setError(err.message || 'Có lỗi xảy ra');
     } finally {
       setIsLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-brand-dark flex flex-col items-center justify-center p-4 relative overflow-hidden">
+    <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-4 relative overflow-hidden">
       {/* Decorative Background Elements */}
       <div className="absolute top-0 left-0 w-full h-full overflow-hidden z-0 pointer-events-none">
-        <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-brand-gold/5 rounded-full blur-[100px]"></div>
-        <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-brand-gold/5 rounded-full blur-[100px]"></div>
+        <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-fashion-accent/5 rounded-full blur-[100px]"></div>
+        <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-fashion-accent/5 rounded-full blur-[100px]"></div>
       </div>
 
-      <div className="w-full max-w-md bg-[#0f0f0f] border border-gray-800 rounded-2xl p-8 shadow-[0_0_40px_rgba(0,0,0,0.5)] z-10 animate-fade-in-up">
+      <div className="w-full max-w-md bg-white border border-gray-200 rounded-2xl p-8 shadow-xl z-10 animate-fade-in-up">
         {/* Logo */}
         <div className="flex flex-col items-center mb-8">
-            <div className="w-16 h-16 bg-brand-gold rounded-full flex items-center justify-center text-brand-dark font-serif font-bold text-3xl shadow-[0_0_15px_rgba(212,175,55,0.4)] mb-4">A</div>
-            <h1 className="text-2xl font-serif text-white tracking-wide">ATHEA Creative</h1>
-            <p className="text-xs text-brand-gold uppercase tracking-widest mt-1">Trợ Lý Thời Trang AI</p>
+            <div className="w-16 h-16 bg-fashion-accent rounded-full flex items-center justify-center text-white font-serif font-bold text-3xl shadow-[0_0_15px_rgba(212,175,55,0.4)] mb-4">A</div>
+            <h1 className="text-2xl font-serif text-fashion-black tracking-wide">ATHEA Creative</h1>
+            <p className="text-xs text-fashion-accent uppercase tracking-widest mt-1">Trợ Lý Thời Trang AI</p>
         </div>
 
-        <h2 className="text-xl text-white font-medium mb-6 text-center border-b border-gray-800 pb-4">
+        <h2 className="text-xl text-fashion-black font-medium mb-6 text-center border-b border-gray-200 pb-4">
           {isRegistering ? 'Đăng Ký Tài Khoản' : 'Đăng Nhập'}
         </h2>
 
         {/* Thông báo thành công (khi vừa đăng ký xong) */}
         {successMsg && (
-            <div className="mb-4 p-3 bg-green-900/20 border border-green-800 text-green-400 text-sm rounded text-center">
+            <div className="mb-4 p-3 bg-green-50 border border-green-200 text-green-700 text-sm rounded text-center">
                 {successMsg}
             </div>
         )}
@@ -111,42 +133,42 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
         <form onSubmit={handleSubmit} className="space-y-5">
           {isRegistering && (
             <div>
-              <label className="block text-xs font-medium text-gray-400 mb-1 uppercase">Họ và Tên</label>
+              <label className="block text-xs font-medium text-gray-600 mb-1 uppercase">Họ và Tên</label>
               <input
                 type="text"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                className="w-full bg-brand-dark border border-gray-700 rounded-lg p-3 text-white placeholder-gray-600 focus:outline-none focus:border-brand-gold focus:ring-1 focus:ring-brand-gold transition-all"
+                className="w-full bg-white border border-gray-300 rounded-lg p-3 text-fashion-black placeholder-gray-400 focus:outline-none focus:border-fashion-accent focus:ring-1 focus:ring-fashion-accent/20 transition-all"
                 placeholder="Nhập họ tên của bạn"
               />
             </div>
           )}
 
           <div>
-            <label className="block text-xs font-medium text-gray-400 mb-1 uppercase">Email</label>
+            <label className="block text-xs font-medium text-gray-600 mb-1 uppercase">Email</label>
             <input
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full bg-brand-dark border border-gray-700 rounded-lg p-3 text-white placeholder-gray-600 focus:outline-none focus:border-brand-gold focus:ring-1 focus:ring-brand-gold transition-all"
+              className="w-full bg-white border border-gray-300 rounded-lg p-3 text-fashion-black placeholder-gray-400 focus:outline-none focus:border-fashion-accent focus:ring-1 focus:ring-fashion-accent/20 transition-all"
               placeholder="name@company.com"
             />
           </div>
 
           <div>
-            <label className="block text-xs font-medium text-gray-400 mb-1 uppercase">Mật khẩu</label>
+            <label className="block text-xs font-medium text-gray-600 mb-1 uppercase">Mật khẩu</label>
             <input
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full bg-brand-dark border border-gray-700 rounded-lg p-3 text-white placeholder-gray-600 focus:outline-none focus:border-brand-gold focus:ring-1 focus:ring-brand-gold transition-all"
+              className="w-full bg-white border border-gray-300 rounded-lg p-3 text-fashion-black placeholder-gray-400 focus:outline-none focus:border-fashion-accent focus:ring-1 focus:ring-fashion-accent/20 transition-all"
               placeholder="••••••••"
             />
           </div>
 
           {/* Thông báo lỗi */}
           {error && (
-            <div className="text-red-400 text-sm text-center bg-red-900/10 p-2 rounded border border-red-900/30">
+            <div className="text-red-600 text-sm text-center bg-red-50 p-2 rounded border border-red-200">
               {error}
             </div>
           )}
@@ -161,7 +183,7 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
         </form>
 
         <div className="mt-6 text-center">
-          <p className="text-sm text-gray-500">
+          <p className="text-sm text-gray-600">
             {isRegistering ? 'Đã có tài khoản?' : 'Chưa có tài khoản?'}
             <button 
               onClick={() => {
@@ -169,7 +191,7 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
                 setError(null);
                 setSuccessMsg(null);
               }}
-              className="ml-2 text-brand-gold hover:underline font-medium"
+              className="ml-2 text-fashion-accent hover:underline font-medium"
             >
               {isRegistering ? 'Đăng nhập ngay' : 'Đăng ký ngay'}
             </button>
@@ -177,7 +199,7 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
         </div>
       </div>
       
-      <p className="text-gray-600 text-xs mt-8 absolute bottom-4">© 2024 ATHEA AI. All rights reserved.</p>
+      <p className="text-gray-500 text-xs mt-8 absolute bottom-4">© 2024 ATHEA AI. All rights reserved.</p>
     </div>
   );
 };
