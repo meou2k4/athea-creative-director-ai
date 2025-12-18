@@ -131,7 +131,12 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
         } else {
           // Response không phải JSON (có thể là HTML error page)
           if (res.status === 404) {
-            throw new Error(`Server không tìm thấy endpoint. Vui lòng kiểm tra:\n1. Server có đang chạy tại http://localhost:3001?\n2. Chạy lệnh: npm run dev:server\n3. Kiểm tra: http://localhost:3001/api/health`);
+            const isProduction = window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1';
+            if (isProduction) {
+              throw new Error(`API endpoint không tìm thấy. Vui lòng kiểm tra cấu hình Vercel và đảm bảo file api/auth.js tồn tại.`);
+            } else {
+              throw new Error(`Server không tìm thấy endpoint. Vui lòng kiểm tra:\n1. Server có đang chạy tại http://localhost:3001?\n2. Chạy lệnh: npm run dev:server\n3. Kiểm tra: http://localhost:3001/api/health`);
+            }
           }
           throw new Error(`Server trả về lỗi ${res.status}: ${responseText.substring(0, 200)}`);
         }
@@ -147,7 +152,12 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
         // Xử lý lỗi 404 đặc biệt
         if (res.status === 404) {
           const errorMsg = data.message || data.error || 'Endpoint không tồn tại';
-          throw new Error(`${errorMsg}\n\nVui lòng kiểm tra:\n1. Server có đang chạy tại http://localhost:3001?\n2. Chạy lệnh: npm run dev:server\n3. Kiểm tra: http://localhost:3001/api/health`);
+          const isProduction = window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1';
+          if (isProduction) {
+            throw new Error(`${errorMsg}\n\nVui lòng kiểm tra:\n1. File api/auth.js có tồn tại trong project?\n2. Cấu hình Vercel có đúng không?\n3. Environment variables đã được set trong Vercel chưa?`);
+          } else {
+            throw new Error(`${errorMsg}\n\nVui lòng kiểm tra:\n1. Server có đang chạy tại http://localhost:3001?\n2. Chạy lệnh: npm run dev:server\n3. Kiểm tra: http://localhost:3001/api/health`);
+          }
         }
         
         // Nếu API trả về lỗi (400, 401, 403, 500...)
