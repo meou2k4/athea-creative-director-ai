@@ -16,88 +16,177 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
+  // Hàm validation
+  const validateEmail = (email: string): string | null => {
+    if (!email || email.trim() === '') {
+      return 'Vui lòng nhập email.';
+    }
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return 'Email không hợp lệ. Vui lòng nhập đúng định dạng email.';
+    }
+    if (email.length > 100) {
+      return 'Email không được vượt quá 100 ký tự.';
+    }
+    return null;
+  };
+
+  const validatePassword = (password: string): string | null => {
+    if (!password || password.trim() === '') {
+      return 'Vui lòng nhập mật khẩu.';
+    }
+    if (password.length < 6) {
+      return 'Mật khẩu phải có ít nhất 6 ký tự.';
+    }
+    if (password.length > 50) {
+      return 'Mật khẩu không được vượt quá 50 ký tự.';
+    }
+    return null;
+  };
+
+  const validateName = (name: string): string | null => {
+    if (!name || name.trim() === '') {
+      return 'Vui lòng nhập họ tên.';
+    }
+    const trimmedName = name.trim();
+    if (trimmedName.length < 2) {
+      return 'Họ tên phải có ít nhất 2 ký tự.';
+    }
+    if (trimmedName.length > 50) {
+      return 'Họ tên không được vượt quá 50 ký tự.';
+    }
+    // Chỉ cho phép chữ cái, khoảng trắng, dấu tiếng Việt
+    const nameRegex = /^[a-zA-ZÀ-ỹ\s]+$/;
+    if (!nameRegex.test(trimmedName)) {
+      return 'Họ tên chỉ được chứa chữ cái và khoảng trắng.';
+    }
+    return null;
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     setSuccessMsg(null);
     setIsLoading(true);
 
-    // 1. Validate cơ bản phía Client
-    if (!email || !password) {
+    // 1. Validate phía Client
+    if (isRegistering) {
+      // Validate name
+      const nameError = validateName(name);
+      if (nameError) {
+        setIsLoading(false);
+        setError(nameError);
+        return;
+      }
+    }
+
+    // Validate email
+    const emailError = validateEmail(email);
+    if (emailError) {
       setIsLoading(false);
-      setError("Vui lòng nhập đầy đủ email và mật khẩu.");
+      setError(emailError);
       return;
     }
 
-    if (isRegistering && !name) {
+    // Validate password
+    const passwordError = validatePassword(password);
+    if (passwordError) {
       setIsLoading(false);
-      setError("Vui lòng nhập họ tên.");
+      setError(passwordError);
       return;
     }
 
     try {
-      // 2. Local Authentication (Development mode - không cần API)
-      // Lưu users vào localStorage
-      const storageKey = 'athea_local_users';
-      let users: Array<{email: string, password: string, name: string, status: string}> = [];
-      
+      // 2. Gọi API Serverless để xử lý đăng nhập/đăng ký với Google Sheets
+      const res = await fetch('/api/auth', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          action: isRegistering ? 'register' : 'login',
+          email,
+          password,
+          name: isRegistering ? name : undefined,
+        }),
+      });
+
+      // Kiểm tra response có content không
+      const contentType = res.headers.get('content-type');
+      let data: any = {};
+      let responseText = '';
+
       try {
-        const stored = localStorage.getItem(storageKey);
-        if (stored) {
-          users = JSON.parse(stored);
+        responseText = await res.text();
+        
+        if (contentType && contentType.includes('application/json')) {
+          if (responseText) {
+            try {
+              data = JSON.parse(responseText);
+            } catch (parseError) {
+              console.error('Error parsing JSON:', parseError, 'Response text:', responseText);
+              throw new Error(`Phản hồi từ server không hợp lệ: ${responseText.substring(0, 200)}`);
+            }
+          }
+        } else {
+          // Response không phải JSON (có thể là HTML error page)
+          throw new Error(`Server trả về lỗi ${res.status}: ${responseText.substring(0, 200)}`);
         }
-      } catch (e) {
-        console.error('Error reading users from localStorage', e);
+      } catch (textError: any) {
+        // Nếu lỗi khi đọc text, có thể là network error
+        if (textError.message) {
+          throw textError;
+        }
+        throw new Error('Không thể đọc phản hồi từ server. Vui lòng kiểm tra server có đang chạy không.');
       }
 
-      if (isRegistering) {
-        // Đăng ký
-        const existingUser = users.find(u => u.email === email);
-        if (existingUser) {
-          setIsLoading(false);
-          setError('Email này đã được đăng ký');
-          return;
-        }
-
-        // Thêm user mới
-        users.push({
-          email,
-          password, // Trong production nên hash password
-          name,
-          status: 'APPROVED' // Auto approve trong dev mode
-        });
-        localStorage.setItem(storageKey, JSON.stringify(users));
+      if (!res.ok) {
+        // Nếu API trả về lỗi (400, 401, 403, 500...)
+        const errorMsg = data.message || data.error || `Lỗi ${res.status}: ${res.statusText}`;
+        const errorDetails = data.details ? `\n\nChi tiết: ${data.details}` : '';
+        const fullError = `${errorMsg}${errorDetails}`;
         
-        setSuccessMsg('Đăng ký thành công! Bạn có thể đăng nhập ngay.');
-        setIsRegistering(false);
+        console.error('API Error Response:', {
+          status: res.status,
+          statusText: res.statusText,
+          data: data,
+          responseText: responseText.substring(0, 500)
+        });
+        
+        throw new Error(fullError);
+      }
+
+      // 3. Xử lý thành công
+      if (isRegistering) {
+        // Đăng ký thành công -> Thông báo chờ duyệt
+        setSuccessMsg(data.message || 'Đăng ký thành công! Vui lòng chờ Admin duyệt.');
+        setIsRegistering(false);     // Chuyển về form đăng nhập
         setEmail('');
         setPassword('');
         setName('');
       } else {
-        // Đăng nhập
-        const user = users.find(u => u.email === email && u.password === password);
-        if (!user) {
-          setIsLoading(false);
-          setError('Sai email hoặc mật khẩu');
-          return;
+        // Đăng nhập thành công -> Vào app
+        if (!data.user) {
+          throw new Error('Dữ liệu người dùng không hợp lệ');
         }
-
-        if (user.status !== 'APPROVED') {
-          setIsLoading(false);
-          setError(`Tài khoản đang ở trạng thái: ${user.status}. Vui lòng liên hệ Admin.`);
-          return;
-        }
-
-        // Đăng nhập thành công
-        const userData: User = {
-          email: user.email,
-          name: user.name,
+        const user: User = {
+          email: data.user.email,
+          name: data.user.name,
         };
-        onLogin(userData);
+        onLogin(user);
       }
 
     } catch (err: any) {
-      setError(err.message || 'Có lỗi xảy ra');
+      console.error('Login error:', err);
+      
+      // Xử lý các loại lỗi khác nhau
+      if (err.name === 'TypeError' && err.message.includes('fetch')) {
+        setError('Không thể kết nối đến server. Vui lòng kiểm tra server có đang chạy tại http://localhost:3001');
+      } else if (err.message) {
+        setError(err.message);
+      } else {
+        setError('Có lỗi xảy ra. Vui lòng thử lại sau.');
+      }
     } finally {
       setIsLoading(false);
     }
