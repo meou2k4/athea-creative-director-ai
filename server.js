@@ -237,12 +237,33 @@ app.post('/api/auth', async (req, res) => {
 // Health check
 app.get('/api/health', (req, res) => res.json({ status: 'running' }));
 
+// Catch-all route cho các endpoint không tồn tại
+app.use('/api/*', (req, res) => {
+  res.status(404).json({ 
+    message: 'Endpoint không tồn tại', 
+    path: req.path,
+    method: req.method 
+  });
+});
+
+// Root route
+app.get('/', (req, res) => {
+  res.json({ 
+    message: 'ATHEA API Server', 
+    endpoints: {
+      health: '/api/health',
+      auth: '/api/auth (POST)'
+    }
+  });
+});
+
 app.listen(PORT, () => {
   console.log(`
   🚀 SERVER STARTED
   -------------------------------
   Port: ${PORT}
   Endpoint: http://localhost:${PORT}/api/auth
+  Health: http://localhost:${PORT}/api/health
   -------------------------------
   `);
 });

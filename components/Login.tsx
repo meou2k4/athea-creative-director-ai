@@ -130,6 +130,9 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
           }
         } else {
           // Response không phải JSON (có thể là HTML error page)
+          if (res.status === 404) {
+            throw new Error(`Server không tìm thấy endpoint. Vui lòng kiểm tra:\n1. Server có đang chạy tại http://localhost:3001?\n2. Chạy lệnh: npm run dev:server\n3. Kiểm tra: http://localhost:3001/api/health`);
+          }
           throw new Error(`Server trả về lỗi ${res.status}: ${responseText.substring(0, 200)}`);
         }
       } catch (textError: any) {
@@ -141,6 +144,12 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
       }
 
       if (!res.ok) {
+        // Xử lý lỗi 404 đặc biệt
+        if (res.status === 404) {
+          const errorMsg = data.message || data.error || 'Endpoint không tồn tại';
+          throw new Error(`${errorMsg}\n\nVui lòng kiểm tra:\n1. Server có đang chạy tại http://localhost:3001?\n2. Chạy lệnh: npm run dev:server\n3. Kiểm tra: http://localhost:3001/api/health`);
+        }
+        
         // Nếu API trả về lỗi (400, 401, 403, 500...)
         const errorMsg = data.message || data.error || `Lỗi ${res.status}: ${res.statusText}`;
         const errorDetails = data.details ? `\n\nChi tiết: ${data.details}` : '';
@@ -181,8 +190,9 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
       
       // Xử lý các loại lỗi khác nhau
       if (err.name === 'TypeError' && err.message.includes('fetch')) {
-        setError('Không thể kết nối đến server. Vui lòng kiểm tra server có đang chạy tại http://localhost:3001');
+        setError('Không thể kết nối đến server. Vui lòng:\n1. Kiểm tra server có đang chạy tại http://localhost:3001\n2. Chạy lệnh: npm run dev:server\n3. Hoặc chạy cả 2: npm run dev:all');
       } else if (err.message) {
+        // Giữ nguyên message, có thể chứa hướng dẫn chi tiết
         setError(err.message);
       } else {
         setError('Có lỗi xảy ra. Vui lòng thử lại sau.');
