@@ -1,6 +1,6 @@
 
 import { GoogleGenAI, Type, Schema } from "@google/genai";
-import { FashionAIResponse, UserInput, ImageRef } from "../types";
+import { FashionAIResponse, UserInput, ImageRef, Concept, Pose } from "../types";
 
 const responseSchema: Schema = {
   type: Type.OBJECT,
@@ -73,26 +73,56 @@ const responseSchema: Schema = {
 };
 
 const SYSTEM_INSTRUCTION = `
-Bạn là AI Fashion Creative Director & Senior Prompt Engineer.
-Nhiệm vụ: Phân tích các ảnh tham chiếu (Nhiều ảnh Sản phẩm, Gương mặt, Chất liệu) để tạo 03 Concept thời trang.
+Bạn là AI Fashion Creative Director & Senior Prompt Engineer cho thương hiệu ATHEA.
+Nhiệm vụ: Phân tích các ảnh tham chiếu (Nhiều ảnh Sản phẩm, Gương mặt, Chất liệu) để tạo 03 Concept thời trang chuyên nghiệp.
 
 QUY TẮC NHẤT QUÁN CỐT LÕI (CONSISTENCY RULES):
 1. PRODUCT_IMAGES (Các ảnh sản phẩm): Tổng hợp các góc độ để giữ nguyên phom dáng, chi tiết thiết kế, phụ kiện và bảng màu.
 2. FACE_REFERENCE (Nếu có): Giữ nguyên 100% nhân dạng (facial structure, eyes, skin tone). Không thay đổi sắc tộc.
 3. FABRIC_REFERENCE (Nếu có): Giữ nguyên kết cấu vải, độ bóng, họa tiết thêu dệt.
 
-Mỗi 'pose_prompt' là chuỗi JSON kỹ thuật (English) mô tả cách kết hợp các yếu tố này vào bối cảnh mới.
+YÊU CẦU CHI TIẾT CHO JSON 'pose_prompt' (SỬ DỤNG TIẾNG ANH):
+- 'pose_and_framing': Phải cực kỳ chi tiết về góc máy (VD: Low angle, Dutch angle, Eye-level), tiêu cự lens (VD: 85mm f/1.2 portrait, 35mm wide editorial), và phong cách nghệ thuật (VD: Avant-garde, Minimalism, Surrealism, Vogue-editorial style).
+- 'lighting_and_camera': Phải mô tả chính xác sơ đồ ánh sáng (VD: Chiaroscuro, Rim lighting, Butterfly lighting, Softbox diffusion, High-key lighting) và các thông số hậu kỳ điện ảnh (VD: Cinematic color grading, grainy film look, sharp focus with bokeh).
+- 'subject_lock' & 'outfit_anchor': Khóa chặt chẽ danh tính người mẫu và chi tiết trang phục từ ảnh tham chiếu.
 `;
 
-export const analyzeImage = async (input: UserInput): Promise<FashionAIResponse> => {
-  const apiKey = process.env.API_KEY || process.env.GEMINI_API_KEY;
-  if (!apiKey) throw new Error("API Key is missing.");
-  const ai = new GoogleGenAI({ apiKey });
+/**
+ * Utility function to handle retries for 429 (Resource Exhausted) errors
+ */
+async function callWithRetry<T>(fn: () => Promise<T>, maxRetries = 6): Promise<T> {
+  let lastError: any;
+  for (let i = 0; i < maxRetries; i++) {
+    try {
+      return await fn();
+    } catch (error: any) {
+      lastError = error;
+      const errorMessage = error.message || "";
+      const isQuotaError = errorMessage.includes("429") || 
+                          errorMessage.includes("RESOURCE_EXHAUSTED") ||
+                          errorMessage.includes("quota");
+      
+      if (isQuotaError && i < maxRetries - 1) {
+        // More robust exponential backoff: 4s, 8s, 16s, 32s...
+        const waitTime = Math.pow(2, i + 2) * 1000 + Math.random() * 2000;
+        console.warn(`Quota exceeded (429). Retrying in ${Math.round(waitTime/1000)}s... (Attempt ${i + 1}/${maxRetries})`);
+        await new Promise(resolve => setTimeout(resolve, waitTime));
+        continue;
+      }
+      throw error;
+    }
+  }
+  throw lastError;
+}
 
-  try {
+export const analyzeImage = async (input: UserInput): Promise<FashionAIResponse> => {
+  const apiKey = (process.env as any).API_KEY || (process.env as any).GEMINI_API_KEY;
+  if (!apiKey) throw new Error("API Key is missing.");
+
+  return callWithRetry(async () => {
+    const ai = new GoogleGenAI({ apiKey });
     const parts: any[] = [];
     
-    // Support multiple product images
     if (input.productImages && input.productImages.length > 0) {
       parts.push({ text: "PRODUCT REFERENCE IMAGES (Multiple angles/details):" });
       input.productImages.forEach((img, idx) => {
@@ -112,12 +142,13 @@ export const analyzeImage = async (input: UserInput): Promise<FashionAIResponse>
       parts.push({ inlineData: { mimeType: input.fabricReference.mimeType!, data: input.fabricReference.data } });
     }
 
-    const promptText = `HÃY PHÂN TÍCH VÀ SÁNG TẠO CONCEPT:
+    const promptText = `HÃY PHÂN TÍCH VÀ SÁNG TẠO CONCEPT THỜI TRANG ĐẲNG CẤP:
 Bối cảnh chủ đạo: "${input.context}".
 Yêu cầu riêng: ${input.customDescription || 'Luxury editorial'}.
 Khóa ánh sáng: ${input.lock_lighting ? "Có" : "Không"}.
 
-YÊU CẦU: Tạo 03 concept, mỗi concept 5 poses. Đảm bảo pose_prompt mô tả chi tiết cách duy trì sự nhất quán từ TẤT CẢ các ảnh sản phẩm và tham chiếu đã cung cấp.`;
+YÊU CẦU: Tạo 03 concept sáng tạo nhất, mỗi concept 5 poses.
+LƯU Ý QUAN TRỌNG: Trong phần 'pose_prompt', hãy sử dụng các thuật ngữ nhiếp ảnh chuyên sâu cho 'lighting_and_camera' và 'pose_and_framing' để đạt được chất lượng ảnh bìa tạp chí cao cấp.`;
 
     parts.push({ text: promptText });
 
@@ -136,11 +167,56 @@ YÊU CẦU: Tạo 03 concept, mỗi concept 5 poses. Đảm bảo pose_prompt m�
       data.concepts = data.concepts.map((c, i) => ({ ...c, id: `concept-${i}` }));
       return data;
     }
-    throw new Error("No response");
-  } catch (error) {
-    console.error("Gemini Analysis Error:", error);
-    throw error;
-  }
+    throw new Error("No response from AI.");
+  });
+};
+
+export const regeneratePosePrompt = async (
+  concept: Concept,
+  pose: Pose,
+  userInput: UserInput
+): Promise<{ pose_title: string, pose_description: string, pose_prompt: string }> => {
+  const apiKey = (process.env as any).API_KEY || (process.env as any).GEMINI_API_KEY;
+  if (!apiKey) throw new Error("API Key is missing.");
+
+  const promptSchema: Schema = {
+    type: Type.OBJECT,
+    properties: {
+      pose_title: { type: Type.STRING },
+      pose_description: { type: Type.STRING },
+      pose_prompt: { type: Type.STRING }
+    },
+    required: ["pose_title", "pose_description", "pose_prompt"]
+  };
+
+  return callWithRetry(async () => {
+    const ai = new GoogleGenAI({ apiKey });
+    const promptText = `HÃY TẠO LẠI MỘT POSE KHÁC CHO CONCEPT NÀY.
+Concept: "${concept.concept_name_vn}" / "${concept.concept_name_en}".
+Mục tiêu: "${concept.sales_target}".
+Địa điểm: "${concept.shoot_location}".
+Pose hiện tại (cần thay đổi): "${pose.pose_title}".
+
+YÊU CẦU ĐẶC BIỆT TỪ GIÁM ĐỐC SÁNG TẠO:
+1. Sáng tạo vượt bậc: Tạo một pose mới mang tính điện ảnh hoặc thời trang cao cấp (High-Fashion), phá vỡ sự rập khuôn của pose cũ.
+2. Mô tả truyền cảm hứng: Viết lại 'pose_description' (Tiếng Việt) cực kỳ hấp dẫn. Hãy mô tả nó như một tác phẩm nghệ thuật: cách người mẫu biểu đạt linh hồn bộ trang phục, sự tương tác đầy cảm xúc với bối cảnh, và các thuật ngữ chuyên môn về chuyển động, bố cục.
+3. Kỹ thuật hoàn hảo: 'pose_prompt' (Tiếng Anh) phải là một tập hợp các chỉ dẫn kỹ thuật cực kỳ chi tiết cho AI (lighting, lens choice, mood, character identity coherence) để tạo ra bức ảnh đẳng cấp nhất.`;
+
+    const response = await ai.models.generateContent({
+      model: "gemini-3-pro-preview",
+      contents: promptText,
+      config: {
+        systemInstruction: SYSTEM_INSTRUCTION + "\nBạn là một Giám đốc Sáng tạo đầy tham vọng. Hãy tạo ra những nội dung thực sự khác biệt và đẳng cấp. Trả về JSON cho một pose duy nhất.",
+        responseMimeType: "application/json",
+        responseSchema: promptSchema,
+      },
+    });
+
+    if (response.text) {
+      return JSON.parse(response.text);
+    }
+    throw new Error("Failed to regenerate pose prompt.");
+  });
 };
 
 export const generateFashionImage = async (
@@ -148,66 +224,64 @@ export const generateFashionImage = async (
   userInput: UserInput,
   options?: { faceLock?: boolean, outfitLock?: boolean }
 ): Promise<string> => {
-  const apiKey = process.env.API_KEY || process.env.GEMINI_API_KEY;
+  const apiKey = (process.env as any).API_KEY || (process.env as any).GEMINI_API_KEY;
   if (!apiKey) throw new Error("API Key is missing");
-  const ai = new GoogleGenAI({ apiKey });
   
-  const parts: any[] = [];
+  return callWithRetry(async () => {
+    const ai = new GoogleGenAI({ apiKey });
+    const parts: any[] = [];
 
-  // Add all product images for ultimate consistency during generation
-  if (userInput.productImages && userInput.productImages.length > 0) {
-    userInput.productImages.forEach(img => {
-      if (img.data) {
-        parts.push({ inlineData: { mimeType: img.mimeType!, data: img.data } });
-      }
-    });
-  }
-  
-  if (userInput.faceReference.data && (options?.faceLock !== false)) {
-    parts.push({ inlineData: { mimeType: userInput.faceReference.mimeType!, data: userInput.faceReference.data } });
-  }
-  if (userInput.fabricReference.data && (options?.outfitLock !== false)) {
-    parts.push({ inlineData: { mimeType: userInput.fabricReference.mimeType!, data: userInput.fabricReference.data } });
-  }
+    if (userInput.productImages && userInput.productImages.length > 0) {
+      userInput.productImages.forEach(img => {
+        if (img.data) {
+          parts.push({ inlineData: { mimeType: img.mimeType!, data: img.data } });
+        }
+      });
+    }
+    
+    if (userInput.faceReference.data && (options?.faceLock !== false)) {
+      parts.push({ inlineData: { mimeType: userInput.faceReference.mimeType!, data: userInput.faceReference.data } });
+    }
+    if (userInput.fabricReference.data && (options?.outfitLock !== false)) {
+      parts.push({ inlineData: { mimeType: userInput.fabricReference.mimeType!, data: userInput.fabricReference.data } });
+    }
 
-  let technicalPrompt = prompt;
-  try {
-    const json = JSON.parse(prompt);
-    technicalPrompt = `Create a high fashion editorial photo. 
-      Subject Identity: ${json.subject_lock}. 
-      Outfit & Details: ${json.outfit_anchor}. 
-      Pose & Camera: ${json.pose_and_framing}. 
-      Environment: ${json.environment || 'Luxurious'}. 
-      Lighting: ${json.lighting_and_camera}.
-      STRICT: Keep the face from the face reference image and the outfit details from ALL product images exactly as shown.`;
-  } catch (e) {}
+    let technicalPrompt = prompt;
+    try {
+      const json = JSON.parse(prompt);
+      technicalPrompt = `Create a high fashion editorial photo. 
+        Subject Identity: ${json.subject_lock}. 
+        Outfit & Details: ${json.outfit_anchor}. 
+        Pose & Camera: ${json.pose_and_framing}. 
+        Environment: ${json.environment || 'Luxurious'}. 
+        Lighting: ${json.lighting_and_camera}.
+        STRICT: Keep the face from the face reference image and the outfit details from ALL product images exactly as shown.`;
+    } catch (e) {}
 
-  parts.push({ text: technicalPrompt });
+    parts.push({ text: technicalPrompt });
 
-  try {
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash-image',
       contents: { parts },
       config: { imageConfig: { aspectRatio: "3:4" } }
     });
+    
     for (const part of response.candidates?.[0]?.content?.parts || []) {
       if (part.inlineData) return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
     }
-    throw new Error("No image generated");
-  } catch (error) {
-    console.error("Image Gen Error:", error);
-    throw error;
-  }
+    throw new Error("No image was returned from the model.");
+  });
 };
 
 export const refineFashionImage = async (imageBase64: string, instruction: string): Promise<string> => {
-  const apiKey = process.env.API_KEY || process.env.GEMINI_API_KEY;
+  const apiKey = (process.env as any).API_KEY || (process.env as any).GEMINI_API_KEY;
   if (!apiKey) throw new Error("API Key is missing");
-  const ai = new GoogleGenAI({ apiKey });
+
   const base64Data = imageBase64.split(',')[1] || imageBase64;
   const mimeType = imageBase64.match(/data:([^;]+);base64/)?.[1] || 'image/png';
 
-  try {
+  return callWithRetry(async () => {
+    const ai = new GoogleGenAI({ apiKey });
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash-image',
       contents: {
@@ -220,8 +294,6 @@ export const refineFashionImage = async (imageBase64: string, instruction: strin
     for (const part of response.candidates?.[0]?.content?.parts || []) {
       if (part.inlineData) return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
     }
-    throw new Error("No image refined");
-  } catch (error) {
-    throw error;
-  }
+    throw new Error("Image refinement failed.");
+  });
 };

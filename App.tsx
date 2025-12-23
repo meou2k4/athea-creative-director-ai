@@ -27,7 +27,8 @@ import {
   GalleryVertical,
   Wind,
   Hotel,
-  LogOut
+  LogOut,
+  AlertTriangle
 } from 'lucide-react';
 
 const PRESET_SCENES = [
@@ -177,6 +178,12 @@ const App: React.FC = () => {
     localStorage.setItem('fashionAI_savedConcepts', JSON.stringify(newCollection));
   };
 
+  const handleUpdateActiveConcept = (updatedConcept: Concept) => {
+    if (!data) return;
+    const newConcepts = data.concepts.map(c => c.id === updatedConcept.id ? updatedConcept : c);
+    setData({ ...data, concepts: newConcepts });
+  };
+
   const handleUpdateConcept = (updatedConcept: Concept) => {
     const newCollection = savedConcepts.map(c => c.id === updatedConcept.id ? updatedConcept : c);
     setSavedConcepts(newCollection);
@@ -199,8 +206,15 @@ const App: React.FC = () => {
       const result = await analyzeImage({ ...input, context: effectiveContext });
       setData(result);
       setLoading({ status: 'complete' });
-    } catch (error) {
-      setLoading({ status: 'error', message: 'Phân tích thất bại.' });
+    } catch (error: any) {
+      console.error(error);
+      const isQuota = error.message?.includes("429") || error.message?.includes("RESOURCE_EXHAUSTED");
+      setLoading({ 
+        status: 'error', 
+        message: isQuota 
+          ? 'Hết hạn ngạch (Quota) API. Vui lòng chờ vài phút rồi thử lại.' 
+          : 'Phân tích thất bại. Vui lòng thử lại sau.' 
+      });
     }
   };
 
@@ -370,11 +384,13 @@ const App: React.FC = () => {
             </div>
 
             <div className="lg:col-span-8 xl:col-span-9">
-              {loading.message && !data && loading.status !== 'analyzing' && (
-                <div className="fixed top-20 left-1/2 -translate-x-1/2 z-[60] bg-black text-white px-4 py-2 rounded-full text-xs font-bold animate-bounce shadow-xl">
-                  {loading.message}
+              {loading.status === 'error' && (
+                <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl flex items-center gap-3 animate-fade-in">
+                  <AlertTriangle className="text-red-500 flex-shrink-0" size={20} />
+                  <p className="text-sm text-red-700 font-medium">{loading.message}</p>
                 </div>
               )}
+              
               {!data && loading.status === 'idle' && (
                  <div className="flex flex-col items-center justify-center h-[600px] text-center opacity-40">
                     <div className="w-24 h-24 bg-gray-200 rounded-full mb-6 flex items-center justify-center border-2 border-black">
@@ -397,7 +413,7 @@ const App: React.FC = () => {
                 <div className="space-y-8 animate-fade-in pb-20">
                   <h2 className="font-serif text-3xl mb-8 flex items-center gap-3"><span className="w-8 h-[1px] bg-black"></span> 03 Concepts x 05 Poses</h2>
                   <div className="grid grid-cols-1 gap-8">
-                    {data.concepts.map((concept, idx) => <ConceptCard key={concept.id} concept={concept} index={idx} userInput={input} onSave={handleSaveConcept} />)}
+                    {data.concepts.map((concept, idx) => <ConceptCard key={concept.id} concept={concept} index={idx} userInput={input} onSave={handleSaveConcept} onUpdate={handleUpdateActiveConcept} />)}
                   </div>
                 </div>
               )}
