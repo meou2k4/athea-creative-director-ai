@@ -37,7 +37,7 @@ const responseSchema: Schema = {
                 pose_description: { type: Type.STRING },
                 pose_prompt: { 
                   type: Type.STRING, 
-                  description: "JSON string: { 'subject_lock': '...', 'outfit_anchor': '...', 'pose_and_framing': '...', 'lighting_and_camera': '...', 'quality_specs': '...' }" 
+                  description: "JSON string: { 'subject_lock': '...', 'outfit_anchor': '...', 'pose_and_framing': '...', 'environment': '...', 'lighting_and_camera': '...', 'quality_specs': '...' }" 
                 }
               },
               required: ["pose_title", "pose_description", "pose_prompt"]
@@ -73,19 +73,25 @@ const responseSchema: Schema = {
 };
 
 const SYSTEM_INSTRUCTION = `
-Bạn là AI Fashion Creative Director & Senior Prompt Engineer cho thương hiệu ATHEA.
-Nhiệm vụ: Phân tích các ảnh tham chiếu (Nhiều ảnh Sản phẩm, Gương mặt, Chất liệu) để tạo 03 Concept thời trang chuyên nghiệp.
+Bạn là AI Fashion Creative Director & Senior Prompt Engineer tối cao cho thương hiệu thời trang xa hoa ATHEA.
+Nhiệm vụ: Phân tích sâu các ảnh tham chiếu để tạo ra 03 Concept chụp ảnh đẳng cấp thế giới.
 
-QUY TẮC NHẤT QUÁN CỐT LÕI (CONSISTENCY RULES):
-1. PRODUCT_IMAGES (Các ảnh sản phẩm): Tổng hợp các góc độ để giữ nguyên phom dáng, chi tiết thiết kế, phụ kiện và bảng màu.
-2. FACE_REFERENCE (Nếu có): Giữ nguyên 100% nhân dạng (facial structure, eyes, skin tone). Không thay đổi sắc tộc.
-3. FABRIC_REFERENCE (Nếu có): Giữ nguyên kết cấu vải, độ bóng, họa tiết thêu dệt.
+QUY TẮC NHẤT QUÁN DANH TÍNH (STRICT IDENTITY LOCK):
+1. PRODUCT_IMAGES: Phải phân tích mọi chi tiết: đường kim mũi chỉ, độ bóng của vải, phom dáng chiết eo, phụ kiện đi kèm. Tuyệt đối không thay đổi màu sắc hay cấu trúc sản phẩm.
+2. FACE_REFERENCE: Giữ nguyên 100% đặc điểm nhận dạng gương mặt. Không làm biến dạng cấu trúc xương mặt.
+3. FABRIC_REFERENCE: Tái hiện chính xác bề mặt chất liệu (ren, lụa, dạ, pinstripe).
 
-YÊU CẦU CHI TIẾT CHO JSON 'pose_prompt' (SỬ DỤNG TIẾNG ANH):
-- 'pose_and_framing': Phải cực kỳ chi tiết về góc máy (VD: Low angle, Dutch angle, Eye-level), tiêu cự lens (VD: 85mm f/1.2 portrait, 35mm wide editorial), và phong cách nghệ thuật (VD: Avant-garde, Minimalism, Surrealism, Vogue-editorial style).
-- 'lighting_and_camera': Phải mô tả chính xác sơ đồ ánh sáng (VD: Chiaroscuro, Rim lighting, Butterfly lighting, Softbox diffusion, High-key lighting) và các thông số hậu kỳ điện ảnh (VD: Cinematic color grading, grainy film look, sharp focus with bokeh).
-- 'subject_lock' & 'outfit_anchor': Khóa chặt chẽ danh tính người mẫu và chi tiết trang phục từ ảnh tham chiếu.
-`;
+YÊU CẦU BẮT BUỘC CHO 'pose_prompt' (PHẢI LÀ JSON STRING CHI TIẾT):
+Mỗi 'pose_prompt' phải chứa đầy đủ các trường sau trong một chuỗi JSON:
+
+- 'subject_lock': Mô tả chi tiết nhân dạng người mẫu dựa trên ảnh tham chiếu (kiểu tóc, màu mắt, thần thái).
+- 'outfit_anchor': Mô tả cực kỳ chi tiết về trang phục đang mặc, nhấn mạnh các điểm bán hàng (VD: "grey pinstripe blazer with sharp shoulders", "white silk turtleneck inner").
+- 'pose_and_framing': Chỉ định dáng đứng nghệ thuật và bố cục khung hình (VD: "Dynamic high-fashion pose, leaning against a luxury car", "Full body shot, slightly low angle to enhance stature"). Chỉ định tiêu cự ống kính (VD: 85mm f/1.2 for portraits, 35mm for environmental editorial).
+- 'environment': Mô tả chi tiết bối cảnh xung quanh dựa trên Concept được chọn (VD: "Parisian street at golden hour, blurred Eiffel Tower in background, sleek black luxury sedan parked on cobblestones").
+- 'lighting_and_camera': Sơ đồ ánh sáng phức tạp (VD: "Rim lighting to separate subject from dark background, soft butterfly lighting on face, Kodak Portra 400 film aesthetic, cinematic color grading, rich shadows, soft bokeh").
+- 'quality_specs': Các từ khóa chất lượng cao nhất (VD: "8k resolution, highly detailed textures, masterwork, masterpiece, photorealistic, sharp focus").
+
+PHONG CÁCH TỔNG THỂ: Editorial Magazine (Vogue, Harper's Bazaar style). Tránh các pose phổ thông, hãy tạo ra những khoảnh khắc lifestyle đắt giá.`;
 
 /**
  * Utility function to handle retries for 429 (Resource Exhausted) errors
@@ -142,13 +148,13 @@ export const analyzeImage = async (input: UserInput): Promise<FashionAIResponse>
       parts.push({ inlineData: { mimeType: input.fabricReference.mimeType!, data: input.fabricReference.data } });
     }
 
-    const promptText = `HÃY PHÂN TÍCH VÀ SÁNG TẠO CONCEPT THỜI TRANG ĐẲNG CẤP:
+    const promptText = `HÃY PHÂN TÍCH VÀ SÁNG TẠO CONCEPT THỜI TRANG ĐẲNG CẤP CHO ATHEA:
 Bối cảnh chủ đạo: "${input.context}".
 Yêu cầu riêng: ${input.customDescription || 'Luxury editorial'}.
 Khóa ánh sáng: ${input.lock_lighting ? "Có" : "Không"}.
 
 YÊU CẦU: Tạo 03 concept sáng tạo nhất, mỗi concept 5 poses.
-LƯU Ý QUAN TRỌNG: Trong phần 'pose_prompt', hãy sử dụng các thuật ngữ nhiếp ảnh chuyên sâu cho 'lighting_and_camera' và 'pose_and_framing' để đạt được chất lượng ảnh bìa tạp chí cao cấp.`;
+LƯU Ý QUAN TRỌNG: 'pose_prompt' PHẢI là một chuỗi JSON hợp lệ chứa đầy đủ các chi tiết kỹ thuật nhiếp ảnh, ánh sáng và bối cảnh để tạo ra bức ảnh bìa tạp chí hoàn hảo nhất.`;
 
     parts.push({ text: promptText });
 

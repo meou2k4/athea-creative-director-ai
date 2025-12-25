@@ -30,10 +30,27 @@ import {
   Wind,
   Hotel,
   LogOut,
-  AlertTriangle
+  AlertTriangle,
+  Palmtree,
+  Utensils,
+  Store,
+  Crown,
+  Gift
 } from 'lucide-react';
 
 const PRESET_SCENES = [
+  { 
+    "id": "winter_window_boutique_chic", 
+    "label": "Winter Window Boutique Chic", 
+    "description": "Cozy–Chic mùa đông, sang nhẹ (quiet luxury), ấm áp trong nhà – lạnh tuyết ngoài trời; cảm giác \"boutique lookbook\" + \"lifestyle café\". Bối cảnh cốt lõi: không gian boutique/café tối giản, ánh sáng ấm, cửa kính lớn nhìn ra tuyết (cây lá vàng phủ tuyết, phố mùa đông). Điểm nhấn thị giác: outfit nổi bật trên nền trắng tuyết + nội thất be/kem + cây xanh; phụ kiện lifestyle (hoa hồng, ly coffee, mannequin trưng bày) giúp ảnh bán hàng tốt.", 
+    icon: Snowflake 
+  },
+  { 
+    "id": "holiday_boutique_chic", 
+    "label": "Holiday Boutique Chic", 
+    "description": "Street-style Editorial mùa lễ hội trước boutique/café. Tinh thần: sang – nhẹ nhàng – \"quiet luxury\", nữ tính, chuẩn \"rich girl aesthetic\". Bối cảnh: trước cửa boutique/café, cửa kính có tủ bánh và ánh đèn ấm; cây thông phủ tuyết + phụ kiện Noel trắng/ánh vàng + hộp quà nơ đỏ. Ánh sáng: tự nhiên mềm + đèn vàng tạo bokeh. Ảnh kiểu editorial bán hàng: rõ chất liệu, tôn dáng, \"đắt tiền\".", 
+    icon: Gift 
+  },
   { 
     "id": "white_lace_floral_atelier", 
     "label": "Floral Atelier", 
@@ -44,7 +61,7 @@ const PRESET_SCENES = [
     "id": "yacht_pink_resort", 
     "label": "Yacht Daylight Resort", 
     "description": "Tinh thần 'quiet luxury' trên du thuyền – sang, sạch, nắng đẹp, biển xanh, nội thất yacht trắng kem + gỗ teak. Key visual: biển xanh background, boong tàu trắng, lan can inox, ghế tắm nắng, ly nước chanh, vibe 'rich vacation'.", 
-    icon: Anchor 
+    icon: Palmtree 
   },
   { 
     "id": "paris_golden_hour_executive", 
@@ -62,7 +79,7 @@ const PRESET_SCENES = [
     "id": "garden_estate_luncheon", 
     "label": "Garden Estate Luncheon", 
     "description": "Luxury garden estate / villa lawn với các cột tân cổ điển. Bàn tiệc dài với hoa trắng, thủy tinh cao cấp. Mood: serene luxury, modern ladylike, summer high-society. Ánh sáng dịu buổi trưa, phong cách airy premium.", 
-    icon: Flower2 
+    icon: Utensils 
   },
   { 
     "id": "luxury_executive_office", 
@@ -98,7 +115,7 @@ const PRESET_SCENES = [
     "id": "luxury_shopping_street", 
     "label": "Shopping Street", 
     "description": "Khu mua sắm sầm uất với các cửa hiệu kính. Dành cho phong cách Modern Commercial, năng động, streetwear cao cấp.", 
-    icon: ShoppingBag 
+    icon: Store 
   },
   { 
     "id": "corporate_soft_office", 
@@ -122,7 +139,7 @@ const PRESET_SCENES = [
     "id": "grand_hotel_lobby_gala", 
     "label": "Hotel Lobby Gala", 
     "description": "Sảnh khách sạn 5 sao, đèn chùm lộng lẫy, ánh sáng lung linh. Dành cho váy dạ hội, phong cách Glamour, tiệc tối sang trọng.", 
-    icon: Hotel 
+    icon: Crown 
   }
 ];
 
@@ -143,7 +160,7 @@ const App: React.FC = () => {
   const [data, setData] = useState<FashionAIResponse | null>(null);
   const [loading, setLoading] = useState<LoadingState>({ status: 'idle' });
   const [activeTab, setActiveTab] = useState<'studio' | 'collection'>('studio');
-  const [selectedSceneId, setSelectedSceneId] = useState("white_lace_floral_atelier");
+  const [selectedSceneId, setSelectedSceneId] = useState("winter_window_boutique_chic");
   
   const [savedConcepts, setSavedConcepts] = useState<Concept[]>(() => {
     try {

@@ -1,7 +1,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { Concept, UserInput, Pose } from '../types';
-import { Copy, Check, Target, MapPin, UserCheck, Camera, Sparkles, Bookmark, Trash2, Image as ImageIcon, Loader2, Edit2, RefreshCw, Eye, X, User, Shirt, ChevronDown, ChevronUp, Download, AlertCircle, ZoomIn, ZoomOut, Maximize, RotateCcw } from 'lucide-react';
+import { Copy, Check, Target, MapPin, UserCheck, Camera, Sparkles, Bookmark, Trash2, Image as ImageIcon, Loader2, Edit2, RefreshCw, Eye, X, User, Shirt, ChevronDown, ChevronUp, Download, AlertCircle, ZoomIn, ZoomOut, Maximize, RotateCcw, FolderDown } from 'lucide-react';
 import { generateFashionImage, refineFashionImage, regeneratePosePrompt } from '../services/geminiService';
 import RefineImageModal from './RefineImageModal';
 
@@ -18,6 +18,7 @@ interface ConceptCardProps {
 const ConceptCard: React.FC<ConceptCardProps> = ({ concept, index, userInput, onSave, onRemove, onUpdate, isSaved = false }) => {
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [isGeneratingAll, setIsGeneratingAll] = useState(false);
+  const [isDownloadingAll, setIsDownloadingAll] = useState(false);
   const [progressAll, setProgressAll] = useState({ current: 0, total: 0 });
   const [localConcept, setLocalConcept] = useState<Concept>(concept);
   const [loadingIndices, setLoadingIndices] = useState<Set<number>>(new Set());
@@ -164,6 +165,26 @@ const ConceptCard: React.FC<ConceptCardProps> = ({ concept, index, userInput, on
     document.body.removeChild(link);
   };
 
+  const handleDownloadAll = async () => {
+    const imagesToDownload = localConcept.poses.filter(p => !!p.generated_image);
+    if (imagesToDownload.length === 0) {
+      alert("Chưa có ảnh nào được tạo để tải xuống.");
+      return;
+    }
+    
+    setIsDownloadingAll(true);
+    
+    // Sequentially download images with clear feedback
+    for (let idx = 0; idx < imagesToDownload.length; idx++) {
+      const pose = imagesToDownload[idx];
+      handleDownload(pose.generated_image!, `${localConcept.concept_name_en}_pose_${idx + 1}`);
+      // Add a slight delay between downloads to prevent browser blocking and give visual feedback
+      await new Promise(resolve => setTimeout(resolve, 600));
+    }
+    
+    setIsDownloadingAll(false);
+  };
+
   const handleGenerateImage = async (poseIndex: number) => {
     if (loadingIndices.has(poseIndex)) return;
     toggleLoading(poseIndex, true);
@@ -222,8 +243,8 @@ const ConceptCard: React.FC<ConceptCardProps> = ({ concept, index, userInput, on
 
     const taskQueue = [...posesToGenerate];
     
-    // REDUCED CONCURRENCY to 1 to strictly avoid 429 Resource Exhausted errors on free tiers
-    const CONCURRENCY = 1; 
+    // CONCURRENCY = 3: Refactored for parallel execution (2-3 poses at a time)
+    const CONCURRENCY = 3; 
 
     const worker = async () => {
       while (taskQueue.length > 0) {
@@ -234,8 +255,8 @@ const ConceptCard: React.FC<ConceptCardProps> = ({ concept, index, userInput, on
         toggleLoading(i, true);
         
         try {
-          // Add a small jitter delay to avoid spiking requests simultaneously
-          await new Promise(resolve => setTimeout(resolve, Math.random() * 500));
+          // Staggered start to help avoid immediate 429 quota hits
+          await new Promise(resolve => setTimeout(resolve, Math.random() * 1000));
           
           const imageUrl = await generateFashionImage(p.pose_prompt, userInput, {
             faceLock: p.is_face_locked,
@@ -254,15 +275,14 @@ const ConceptCard: React.FC<ConceptCardProps> = ({ concept, index, userInput, on
           const isQuota = e.message?.includes("429") || e.message?.includes("RESOURCE_EXHAUSTED");
           setErrorIndices(prev => {
             const next = new Map(prev);
-            next.set(i, isQuota ? "Hết hạn ngạch (429). Đang xếp hàng thử lại..." : "Lỗi kết nối.");
+            next.set(i, isQuota ? "Hết hạn ngạch (429). Đang chờ thử lại..." : "Lỗi xử lý.");
             return next;
           });
           
-          // Optional: On quota error, push task back to end of queue to retry later
           if (isQuota) {
+             // Push back to end of queue and wait on quota error
              taskQueue.push({p, i});
-             // Wait a bit before next attempt from this worker
-             await new Promise(resolve => setTimeout(resolve, 5000));
+             await new Promise(resolve => setTimeout(resolve, 8000));
           }
         } finally {
           toggleLoading(i, false);
@@ -347,27 +367,34 @@ const ConceptCard: React.FC<ConceptCardProps> = ({ concept, index, userInput, on
 
   const handleWheel = (e: React.WheelEvent) => {
     if (e.deltaY < 0) handleZoomIn();
-    else handleZoomOut();
+    else handleWheelScroll(e);
   };
+
+  const handleWheelScroll = (e: React.WheelEvent) => {
+     if (e.deltaY > 0) handleZoomOut();
+  };
+
+  const hasAnyGeneratedImage = localConcept.poses.some(p => !!p.generated_image);
 
   return (
     <div className="bg-white border border-gray-200 rounded-lg overflow-hidden shadow-sm hover:shadow-md transition-shadow duration-300 font-sans">
       <div className="bg-[#222] text-white px-6 py-4 flex justify-between items-center">
-        <h3 className="font-serif text-xl font-bold tracking-wide">
-          {localConcept.concept_name_vn} <span className="text-gray-400 font-normal text-base">({localConcept.concept_name_en})</span>
+        <h3 className="font-serif text-xl font-bold tracking-wide flex items-center gap-3">
+          {localConcept.concept_name_vn} <span className="text-gray-400 font-normal text-base hidden sm:inline">({localConcept.concept_name_en})</span>
         </h3>
         <div className="flex items-center gap-2">
            {onSave && (
              <button
                onClick={() => onSave(localConcept)}
                disabled={isSaved}
+               title="Lưu Concept vào Bộ sưu tập"
                className={`p-1.5 rounded transition-all ${isSaved ? 'bg-fashion-accent text-black' : 'bg-white/10 hover:bg-white/20 text-white'}`}
              >
                <Bookmark size={18} fill={isSaved ? "currentColor" : "none"} />
              </button>
            )}
            {onRemove && (
-             <button onClick={() => onRemove(localConcept.id)} className="p-1.5 rounded bg-white/10 hover:bg-red-500/80 text-white transition-all">
+             <button onClick={() => onRemove(localConcept.id)} title="Xóa Concept" className="p-1.5 rounded bg-white/10 hover:bg-red-500/80 text-white transition-all">
                <Trash2 size={18} />
              </button>
            )}
@@ -385,12 +412,46 @@ const ConceptCard: React.FC<ConceptCardProps> = ({ concept, index, userInput, on
         </div>
 
         <div className="mb-8">
-          <div className="flex justify-between items-center mb-4 border-b border-gray-200 pb-2">
+          <div className="flex justify-between items-center mb-4 border-b border-gray-200 pb-2 flex-wrap gap-4">
             <h4 className="font-bold text-gray-900 text-lg flex items-center gap-2"><Camera size={18} /> Chi tiết thực hiện (Bộ 5 Poses)</h4>
-            <button onClick={handleGenerateAll} disabled={loadingIndices.size > 0 || isGeneratingAll} className={`flex items-center gap-2 px-3 py-1.5 text-xs font-bold border transition-all rounded shadow-sm ${isGeneratingAll ? 'bg-yellow-100 border-yellow-300 text-yellow-800' : 'text-fashion-accent border-fashion-accent hover:bg-yellow-50'} disabled:opacity-50`}>
-              {isGeneratingAll ? <Loader2 size={12} className="animate-spin"/> : <Sparkles size={12} />}
-              {isGeneratingAll ? `Đang tạo (${progressAll.current}/${progressAll.total})...` : 'Tạo tất cả ảnh demo'}
-            </button>
+            <div className="flex items-center gap-3">
+              {(isGeneratingAll || isDownloadingAll) && (
+                <div className="flex items-center gap-2 bg-yellow-50 px-3 py-1 rounded-full border border-yellow-100">
+                  <span className="text-[10px] font-bold text-yellow-700 uppercase">
+                    {isDownloadingAll ? 'Đang chuẩn bị file...' : `Tiến độ: ${progressAll.current}/${progressAll.total}`}
+                  </span>
+                  {!isDownloadingAll && (
+                    <div className="w-20 h-1 bg-gray-200 rounded-full overflow-hidden">
+                      <div className="h-full bg-fashion-accent transition-all duration-500" style={{ width: `${(progressAll.current/progressAll.total)*100}%` }}></div>
+                    </div>
+                  )}
+                  {isDownloadingAll && <Loader2 size={10} className="animate-spin text-fashion-accent" />}
+                </div>
+              )}
+              
+              <div className="flex items-center gap-2">
+                <button 
+                  onClick={handleGenerateAll} 
+                  disabled={loadingIndices.size > 0 || isGeneratingAll || isDownloadingAll} 
+                  className={`flex items-center gap-2 px-3 py-1.5 text-xs font-bold border transition-all rounded shadow-sm ${isGeneratingAll ? 'bg-yellow-100 border-yellow-300 text-yellow-800' : 'text-fashion-accent border-fashion-accent hover:bg-yellow-50'} disabled:opacity-50`}
+                >
+                  {isGeneratingAll ? <Loader2 size={12} className="animate-spin"/> : <Sparkles size={12} />}
+                  {isGeneratingAll ? 'Đang chạy song song...' : 'Tạo tất cả ảnh demo'}
+                </button>
+                
+                {hasAnyGeneratedImage && (
+                  <button 
+                    onClick={handleDownloadAll}
+                    disabled={isDownloadingAll || isGeneratingAll}
+                    title="Tải tất cả ảnh đã tạo về máy"
+                    className={`flex items-center gap-2 px-3 py-1.5 text-xs font-bold border border-gray-200 bg-white text-gray-700 hover:bg-gray-50 rounded shadow-sm transition-all disabled:opacity-50`}
+                  >
+                    {isDownloadingAll ? <Loader2 size={14} className="animate-spin" /> : <FolderDown size={14} />}
+                    {isDownloadingAll ? 'Đang tải...' : 'Tải tất cả ảnh'}
+                  </button>
+                )}
+              </div>
+            </div>
           </div>
           <div className="space-y-8">
             {localConcept.poses.map((pose, idx) => {

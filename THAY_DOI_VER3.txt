@@ -1,0 +1,197 @@
+═══════════════════════════════════════════════════════════════════════════════
+  BÁO CÁO CÁC THAY ĐỔI VÀ NÂNG CẤP MỚI - VER3
+  So sánh với workspace hiện tại (có login/auth)
+═══════════════════════════════════════════════════════════════════════════════
+
+📋 TỔNG QUAN
+───────────────────────────────────────────────────────────────────────────────
+Version 3 có nhiều cải tiến về hiệu năng, UX và tính năng mới. Dưới đây là 
+danh sách chi tiết các thay đổi so với workspace hiện tại.
+
+═══════════════════════════════════════════════════════════════════════════════
+1. PRESET_SCENES - CẬP NHẬT VÀ MỞ RỘNG
+═══════════════════════════════════════════════════════════════════════════════
+
+✅ THÊM 2 SCENES MỚI:
+   • "winter_window_boutique_chic" - Winter Window Boutique Chic
+     - Icon: Snowflake
+     - Mô tả: Cozy–Chic mùa đông, quiet luxury, boutique lookbook + lifestyle café
+     - Được set làm DEFAULT scene (thay vì "white_lace_floral_atelier")
+
+   • "holiday_boutique_chic" - Holiday Boutique Chic  
+     - Icon: Gift
+     - Mô tả: Street-style Editorial mùa lễ hội, rich girl aesthetic
+
+✅ THAY ĐỔI ICONS:
+   • "yacht_pink_resort" → Icon: Palmtree (thay vì Anchor)
+   • "garden_estate_luncheon" → Icon: Utensils (thay vì Flower2)
+   • "luxury_shopping_street" → Icon: Store (thay vì ShoppingBag)
+   • "grand_hotel_lobby_gala" → Icon: Crown (thay vì Hotel)
+
+✅ TỔNG SỐ SCENES: 17 scenes (từ 15 scenes)
+
+═══════════════════════════════════════════════════════════════════════════════
+2. CONCEPTCARD.TSX - TÍNH NĂNG MỚI VÀ CẢI TIẾN
+═══════════════════════════════════════════════════════════════════════════════
+
+🆕 TÍNH NĂNG MỚI:
+
+   A. TẢI TẤT CẢ ẢNH (Download All Images)
+      • Thêm function handleDownloadAll()
+      • State: isDownloadingAll
+      • Icon: FolderDown (từ lucide-react)
+      • Tự động tải xuống tuần tự tất cả ảnh đã tạo
+      • Delay 600ms giữa các lần tải để tránh browser blocking
+      • Hiển thị progress indicator khi đang tải
+      • Button chỉ hiện khi có ít nhất 1 ảnh đã tạo
+      • Naming: {concept_name_en}_pose_{index+1}
+
+   B. PROGRESS BAR TRỰC QUAN
+      • Progress bar hiển thị tiến độ khi generate/download
+      • Hiển thị: "Tiến độ: X/Y" với thanh progress bar
+      • Loading spinner khi đang download
+
+   C. RESPONSIVE UI CẢI THIỆN
+      • Concept name tiếng Anh ẩn trên mobile: hidden sm:inline
+      • Flex-wrap cho header buttons để responsive tốt hơn
+
+   D. TOOLTIPS
+      • Thêm title attributes cho các buttons:
+        - "Lưu Concept vào Bộ sưu tập"
+        - "Xóa Concept"
+        - "Tải tất cả ảnh đã tạo về máy"
+        - "Tạo lại nội dung Pose này (AI Sáng tạo)"
+
+✅ CẢI TIẾN HIỆU NĂNG:
+
+   A. PARALLEL EXECUTION (Tăng tốc độ)
+      • CONCURRENCY tăng từ 1 → 3
+      • Tạo 2-3 ảnh song song thay vì tuần tự
+      • Staggered start: random delay 0-1000ms để tránh 429 errors
+      • Quota retry delay: 8000ms (từ 5000ms)
+
+   B. WHEEL SCROLL HANDLING
+      • Tách handleWheelScroll thành function riêng
+      • Xử lý scroll wheel tốt hơn
+
+   C. STATE MANAGEMENT
+      • useEffect sync đơn giản hơn (không merge phức tạp)
+      • hasAnyGeneratedImage check để optimize rendering
+
+✅ UI/UX CẢI THIỆN:
+   • Button text: "Đang chạy song song..." thay vì "Đang tạo..."
+   • Error messages ngắn gọn hơn
+   • Progress indicator rõ ràng hơn
+
+═══════════════════════════════════════════════════════════════════════════════
+3. GEMINISERVICE.TS - CẢI TIẾN PROMPT ENGINEERING
+═══════════════════════════════════════════════════════════════════════════════
+
+✅ SCHEMA CẬP NHẬT:
+   • Thêm field 'environment' vào pose_prompt JSON schema
+   • Schema mới: { 'subject_lock', 'outfit_anchor', 'pose_and_framing', 
+                   'environment', 'lighting_and_camera', 'quality_specs' }
+
+✅ SYSTEM_INSTRUCTION CẢI THIỆN:
+   • Title: "AI Fashion Creative Director & Senior Prompt Engineer tối cao"
+   • Mô tả: "tạo ra 03 Concept chụp ảnh đẳng cấp thế giới"
+   • QUY TẮC NHẤT QUÁN DANH TÍNH (STRICT IDENTITY LOCK):
+     - Chi tiết hơn về PRODUCT_IMAGES: "đường kim mũi chỉ, độ bóng của vải, 
+       phom dáng chiết eo, phụ kiện đi kèm"
+     - FACE_REFERENCE: "Không làm biến dạng cấu trúc xương mặt"
+     - FABRIC_REFERENCE: "Tái hiện chính xác bề mặt chất liệu (ren, lụa, dạ, 
+       pinstripe)"
+
+═══════════════════════════════════════════════════════════════════════════════
+4. APP.TSX - THAY ĐỔI CẤU TRÚC
+═══════════════════════════════════════════════════════════════════════════════
+
+⚠️ KHÁC BIỆT LỚN:
+   • KHÔNG có Login/Auth system (frontend-only version)
+   • KHÔNG có AtheaLogo component
+   • Default scene: "winter_window_boutique_chic" (thay vì "white_lace_floral_atelier")
+   • handleUpdateActiveConcept: Không dùng functional update (có thể gây race condition)
+
+✅ THÊM ICONS MỚI:
+   • Palmtree, Utensils, Store, Crown, Gift
+
+═══════════════════════════════════════════════════════════════════════════════
+5. CÁC FILE KHÁC
+═══════════════════════════════════════════════════════════════════════════════
+
+✅ TYPES.TS: Giống nhau, không thay đổi
+
+✅ VITE.CONFIG.TS: Giống nhau, không thay đổi
+
+✅ TSConfig.JSON: Giống nhau, không thay đổi
+
+✅ INDEX.HTML: Giống nhau, không thay đổi
+
+✅ PACKAGE.JSON: Giống nhau, không thay đổi
+
+═══════════════════════════════════════════════════════════════════════════════
+📊 TÓM TẮT CÁC NÂNG CẤP CHÍNH
+═══════════════════════════════════════════════════════════════════════════════
+
+1. ⚡ HIỆU NĂNG:
+   • Parallel execution: 3x nhanh hơn khi tạo nhiều ảnh
+   • Optimized state management
+
+2. 🎨 UX/UI:
+   • Download All feature - tiện lợi hơn
+   • Progress indicators rõ ràng
+   • Responsive improvements
+   • Tooltips hướng dẫn
+
+3. 🎯 TÍNH NĂNG:
+   • 2 scenes mới cho mùa đông/lễ hội
+   • Better prompt engineering với environment field
+   • Improved error handling
+
+4. 🔧 KỸ THUẬT:
+   • Better concurrency handling
+   • Improved retry logic
+   • Cleaner code structure
+
+═══════════════════════════════════════════════════════════════════════════════
+⚠️ LƯU Ý KHI MERGE
+═══════════════════════════════════════════════════════════════════════════════
+
+1. GIỮ LẠI từ workspace hiện tại:
+   • Login/Auth system
+   • AtheaLogo component
+   • handleUpdateActiveConcept với functional update
+   • useEffect merge logic trong ConceptCard
+
+2. MERGE từ ver3:
+   • Download All feature
+   • Parallel execution (CONCURRENCY = 3)
+   • 2 scenes mới + icon updates
+   • Progress bar improvements
+   • Tooltips
+   • Responsive improvements
+   • Environment field trong schema
+   • Improved SYSTEM_INSTRUCTION
+
+═══════════════════════════════════════════════════════════════════════════════
+📝 CHI TIẾT KỸ THUẬT
+═══════════════════════════════════════════════════════════════════════════════
+
+CONCEPTCARD.TSX - Các function mới:
+   • handleDownloadAll(): Tải tuần tự tất cả ảnh với delay 600ms
+   • handleWheelScroll(): Xử lý scroll wheel riêng biệt
+   • hasAnyGeneratedImage: Check để hiển thị download button
+
+GEMINISERVICE.TS - Schema changes:
+   • pose_prompt description thêm 'environment' field
+   • SYSTEM_INSTRUCTION chi tiết hơn về identity lock rules
+
+APP.TSX - Scene changes:
+   • Thêm 2 scenes: winter_window_boutique_chic, holiday_boutique_chic
+   • Icon updates: Palmtree, Utensils, Store, Crown, Gift
+   • Default scene: winter_window_boutique_chic
+
+═══════════════════════════════════════════════════════════════════════════════
+Kết thúc báo cáo
+═══════════════════════════════════════════════════════════════════════════════
+
