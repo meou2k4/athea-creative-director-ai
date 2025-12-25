@@ -19,6 +19,8 @@ import {
   Trash2,
   Sun,
   Snowflake,
+  Building2,
+  Coffee,
   Flower2,
   Camera,
   Anchor,
@@ -32,15 +34,96 @@ import {
 } from 'lucide-react';
 
 const PRESET_SCENES = [
-  { "id": "white_lace_floral_atelier", "label": "Floral Atelier", "description": "Studio trắng, nữ tính, editorial cao cấp", icon: Flower2 },
-  { "id": "paris_golden_hour", "label": "Paris Golden Hour", "description": "Phố Paris, nắng chiều, lãng mạn sang trọng", icon: Sun },
-  { "id": "winter_boutique", "label": "Winter Boutique", "description": "Cửa hàng mùa lạnh, ánh vàng ấm, quiet luxury", icon: Snowflake },
-  { "id": "riviera_yacht_lux", "label": "Riviera Yacht Lux", "description": "Du thuyền, biển xanh, resort luxury", icon: Anchor },
-  { "id": "luxury_shopping_street", "label": "Shopping Street", "description": "Phố mua sắm cao cấp, fashion commercial", icon: ShoppingBag },
-  { "id": "corporate_soft_office", "label": "Soft Office", "description": "Văn phòng kính, nữ lãnh đạo thanh lịch", icon: Briefcase },
-  { "id": "minimal_gallery_rack", "label": "Minimal Gallery", "description": "Phòng trắng, giá treo, product hero", icon: GalleryVertical },
-  { "id": "autumn_window_atelier", "label": "Autumn Atelier", "description": "Boutique kính, lá thu, editorial story", icon: Wind },
-  { "id": "grand_hotel_lobby_gala", "label": "Hotel Lobby Gala", "description": "Sảnh khách sạn, đèn chùm, gala sang trọng", icon: Hotel }
+  { 
+    "id": "white_lace_floral_atelier", 
+    "label": "Floral Atelier", 
+    "description": "Romantic-luxury, thanh lịch kiểu 'tiệm hoa / atelier váy cưới' (trắng-kem), ánh sáng mềm, nền tối giản tôn ren & phom váy. Cửa tiệm hoa/atelier tone trắng, kính lớn, tường trắng, background hoa hồng/pastel (hồng phấn, trắng kem), cảm giác 'clean bridal muse'.", 
+    icon: Flower2 
+  },
+  { 
+    "id": "yacht_pink_resort", 
+    "label": "Yacht Daylight Resort", 
+    "description": "Tinh thần 'quiet luxury' trên du thuyền – sang, sạch, nắng đẹp, biển xanh, nội thất yacht trắng kem + gỗ teak. Key visual: biển xanh background, boong tàu trắng, lan can inox, ghế tắm nắng, ly nước chanh, vibe 'rich vacation'.", 
+    icon: Anchor 
+  },
+  { 
+    "id": "paris_golden_hour_executive", 
+    "label": "Paris Golden Hour Executive", 
+    "description": "Bối cảnh Paris/Eiffel Tower + xe sang màu đen, ánh hoàng hôn (golden hour), nền bokeh mềm. Tinh thần: sang, cổ điển, 'quiet luxury', khí chất nữ doanh nhân thành thị. Tập trung phom dáng, đường chiết eo & thắt lưng, lifestyle cao cấp.", 
+    icon: Sun 
+  },
+  { 
+    "id": "urban_cafe_executive", 
+    "label": "Urban Café Executive", 
+    "description": "Nữ doanh nhân thanh lịch – 'quiet luxury' – Parisian Workday Luxury. Bối cảnh: vỉa hè café / phố Tây tối giản, cửa gỗ, mặt đá, cây xanh, background bokeh. Ánh sáng: daylight mềm, hơi 'film', tương phản nhẹ. Styling: set xám pinstripe + inner cổ lọ, kính, túi da nâu, ly take-away. Góc máy: editorial thương mại - lifestyle.", 
+    icon: Coffee 
+  },
+  { 
+    "id": "garden_estate_luncheon", 
+    "label": "Garden Estate Luncheon", 
+    "description": "Luxury garden estate / villa lawn với các cột tân cổ điển. Bàn tiệc dài với hoa trắng, thủy tinh cao cấp. Mood: serene luxury, modern ladylike, summer high-society. Ánh sáng dịu buổi trưa, phong cách airy premium.", 
+    icon: Flower2 
+  },
+  { 
+    "id": "luxury_executive_office", 
+    "label": "Luxury Executive Office", 
+    "description": "Nữ doanh nhân thanh lịch trong không gian văn phòng tối giản, ánh sáng tự nhiên. Modern luxury office, floor-to-ceiling windows, light wood desk, clean background. Tone màu Ivory/Warm Neutral. Camera: 85mm portrait look, shallow depth of field.", 
+    icon: Building2 
+  },
+  { 
+    "id": "luxury_city_shopping_stroll", 
+    "label": "City Shopping Stroll", 
+    "description": "Editorial thời trang thương mại tại phố mua sắm cao cấp. Vitrine cửa hàng sang, mặt kính phản chiếu nhẹ, nền phố sạch. Upscale shopping street, luxury storefront windows. Mood: Elegant, premium, modern classic. Lighting: Soft natural daylight, gentle bokeh highlights.", 
+    icon: ShoppingBag 
+  },
+  { 
+    "id": "paris_golden_hour", 
+    "label": "Paris Golden Hour", 
+    "description": "Đường phố Paris cổ kính, ánh nắng vàng rực rỡ buổi chiều tà. Lý tưởng cho phong cách thanh lịch, chic, dạo phố cao cấp.", 
+    icon: Sun 
+  },
+  { 
+    "id": "winter_boutique", 
+    "label": "Winter Boutique", 
+    "description": "Không gian cửa hàng sang trọng, ánh sáng vàng ấm áp. Hoàn hảo cho phong cách Quiet Luxury, đồ len, dạ và thời trang mùa đông.", 
+    icon: Snowflake 
+  },
+  { 
+    "id": "riviera_yacht_lux", 
+    "label": "Riviera Yacht Lux", 
+    "description": "Boong du thuyền hiện đại, nắng gắt, biển xanh biếc. Thích hợp cho Resort wear, đồ bơi cao cấp, phong cách thượng lưu.", 
+    icon: Anchor 
+  },
+  { 
+    "id": "luxury_shopping_street", 
+    "label": "Shopping Street", 
+    "description": "Khu mua sắm sầm uất với các cửa hiệu kính. Dành cho phong cách Modern Commercial, năng động, streetwear cao cấp.", 
+    icon: ShoppingBag 
+  },
+  { 
+    "id": "corporate_soft_office", 
+    "label": "Soft Office", 
+    "description": "Văn phòng hiện đại với tường kính và ánh sáng tự nhiên. Phù hợp phong cách công sở thanh lịch, nữ lãnh đạo, tối giản.", 
+    icon: Briefcase 
+  },
+  { 
+    "id": "minimal_gallery_rack", 
+    "label": "Minimal Gallery", 
+    "description": "Không gian triển lãm tối giản, ánh sáng studio tập trung. Tập trung vào chi tiết sản phẩm, phong cách Avant-garde, Minimalism.", 
+    icon: GalleryVertical 
+  },
+  { 
+    "id": "autumn_window_atelier", 
+    "label": "Autumn Atelier", 
+    "description": "Xưởng may bên cửa sổ lớn, lá vàng rơi, ánh sáng dịu. Phù hợp cho kể chuyện thời trang, phong cách Vintage, lãng mạn hoài cổ.", 
+    icon: Wind 
+  },
+  { 
+    "id": "grand_hotel_lobby_gala", 
+    "label": "Hotel Lobby Gala", 
+    "description": "Sảnh khách sạn 5 sao, đèn chùm lộng lẫy, ánh sáng lung linh. Dành cho váy dạ hội, phong cách Glamour, tiệc tối sang trọng.", 
+    icon: Hotel 
+  }
 ];
 
 const AtheaLogo = () => (
@@ -179,9 +262,11 @@ const App: React.FC = () => {
   };
 
   const handleUpdateActiveConcept = (updatedConcept: Concept) => {
-    if (!data) return;
-    const newConcepts = data.concepts.map(c => c.id === updatedConcept.id ? updatedConcept : c);
-    setData({ ...data, concepts: newConcepts });
+    setData(prev => {
+      if (!prev) return prev;
+      const newConcepts = prev.concepts.map(c => c.id === updatedConcept.id ? updatedConcept : c);
+      return { ...prev, concepts: newConcepts };
+    });
   };
 
   const handleUpdateConcept = (updatedConcept: Concept) => {

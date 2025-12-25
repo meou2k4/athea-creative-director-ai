@@ -35,9 +35,25 @@ const ConceptCard: React.FC<ConceptCardProps> = ({ concept, index, userInput, on
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
   const imageRef = useRef<HTMLImageElement>(null);
 
-  // Sync with props
+  // Sync with props - but merge to preserve local changes (like generated images)
   useEffect(() => {
-    setLocalConcept(concept);
+    setLocalConcept(prev => {
+      // If concept ID matches, merge to preserve generated images
+      if (prev.id === concept.id) {
+        // Merge poses, keeping generated_image from prev if it exists and concept doesn't have it
+        const mergedPoses = concept.poses.map((newPose, idx) => {
+          const prevPose = prev.poses[idx];
+          // If prev has generated_image and new doesn't, keep the prev one
+          if (prevPose && prevPose.generated_image && !newPose.generated_image) {
+            return { ...newPose, generated_image: prevPose.generated_image };
+          }
+          return newPose;
+        });
+        return { ...concept, poses: mergedPoses };
+      }
+      // If ID doesn't match, it's a new concept, so replace completely
+      return concept;
+    });
   }, [concept]);
 
   useEffect(() => {
@@ -69,20 +85,32 @@ const ConceptCard: React.FC<ConceptCardProps> = ({ concept, index, userInput, on
     
     setRegeneratingPromptIndices(prev => new Set(prev).add(idx));
     try {
-      const newPoseData = await regeneratePosePrompt(localConcept, localConcept.poses[idx], userInput);
+      // Get current concept and pose using functional update
+      let currentConcept: Concept;
+      let currentPose: Pose;
+      setLocalConcept(prev => {
+        currentConcept = prev;
+        currentPose = prev.poses[idx];
+        return prev;
+      });
       
-      const updatedPoses = [...localConcept.poses];
-      updatedPoses[idx] = { 
-        ...updatedPoses[idx], 
-        pose_title: newPoseData.pose_title,
-        pose_description: newPoseData.pose_description,
-        pose_prompt: newPoseData.pose_prompt,
-        generated_image: undefined // Reset image because prompt changed
-      };
+      const newPoseData = await regeneratePosePrompt(currentConcept!, currentPose!, userInput);
       
-      const updatedConcept = { ...localConcept, poses: updatedPoses };
-      setLocalConcept(updatedConcept);
-      if (onUpdate) onUpdate(updatedConcept);
+      // Use functional update to preserve all existing images and state
+      setLocalConcept(prev => {
+        const updatedPoses = [...prev.poses];
+        updatedPoses[idx] = { 
+          ...updatedPoses[idx], 
+          pose_title: newPoseData.pose_title,
+          pose_description: newPoseData.pose_description,
+          pose_prompt: newPoseData.pose_prompt,
+          generated_image: undefined // Reset image because prompt changed
+        };
+        
+        const updatedConcept = { ...prev, poses: updatedPoses };
+        if (onUpdate) onUpdate(updatedConcept);
+        return updatedConcept;
+      });
       
       // Auto expand to show the new creative prompt
       setExpandedPrompts(prev => new Set(prev).add(idx));
@@ -138,20 +166,31 @@ const ConceptCard: React.FC<ConceptCardProps> = ({ concept, index, userInput, on
 
   const handleGenerateImage = async (poseIndex: number) => {
     if (loadingIndices.has(poseIndex)) return;
-    const pose = localConcept.poses[poseIndex];
     toggleLoading(poseIndex, true);
     
     try {
-      const imageUrl = await generateFashionImage(pose.pose_prompt, userInput, {
-        faceLock: pose.is_face_locked,
-        outfitLock: pose.is_outfit_locked
+      // Get current pose data - use the latest state from localConcept
+      // Since we have useEffect syncing concept prop to localConcept, this should be current
+      const currentPose = localConcept.poses[poseIndex];
+      if (!currentPose) {
+        toggleLoading(poseIndex, false);
+        return;
+      }
+      
+      const imageUrl = await generateFashionImage(currentPose.pose_prompt, userInput, {
+        faceLock: currentPose.is_face_locked,
+        outfitLock: currentPose.is_outfit_locked
       });
       
-      const updatedPoses = [...localConcept.poses];
-      updatedPoses[poseIndex] = { ...updatedPoses[poseIndex], generated_image: imageUrl };
-      const updatedConcept = { ...localConcept, poses: updatedPoses };
-      setLocalConcept(updatedConcept);
-      if (onUpdate) onUpdate(updatedConcept);
+      // Use functional update to preserve all existing images and state
+      // This ensures we merge with the latest state, not overwrite it
+      setLocalConcept(prev => {
+        const updatedPoses = [...prev.poses];
+        updatedPoses[poseIndex] = { ...updatedPoses[poseIndex], generated_image: imageUrl };
+        const updatedConcept = { ...prev, poses: updatedPoses };
+        if (onUpdate) onUpdate(updatedConcept);
+        return updatedConcept;
+      });
     } catch (error: any) {
       console.error(error);
       const isQuota = error.message?.includes("429") || error.message?.includes("RESOURCE_EXHAUSTED");
@@ -243,16 +282,30 @@ const ConceptCard: React.FC<ConceptCardProps> = ({ concept, index, userInput, on
 
   const handleRefineConfirm = async (instruction: string) => {
     if (refinePoseIndex === null) return;
-    const currentImage = localConcept.poses[refinePoseIndex].generated_image;
-    if (!currentImage) return;
     setIsRefining(true);
     try {
+      // Use functional update to get latest state
+      let currentImage: string | undefined;
+      setLocalConcept(prev => {
+        currentImage = prev.poses[refinePoseIndex!].generated_image;
+        return prev;
+      });
+      
+      if (!currentImage) {
+        setIsRefining(false);
+        return;
+      }
+      
       const refinedImageUrl = await refineFashionImage(currentImage, instruction);
-      const updatedPoses = [...localConcept.poses];
-      updatedPoses[refinePoseIndex] = { ...updatedPoses[refinePoseIndex], generated_image: refinedImageUrl };
-      const updatedConcept = { ...localConcept, poses: updatedPoses };
-      setLocalConcept(updatedConcept);
-      if (onUpdate) onUpdate(updatedConcept);
+      
+      // Use functional update to preserve all existing images
+      setLocalConcept(prev => {
+        const updatedPoses = [...prev.poses];
+        updatedPoses[refinePoseIndex!] = { ...updatedPoses[refinePoseIndex!], generated_image: refinedImageUrl };
+        const updatedConcept = { ...prev, poses: updatedPoses };
+        if (onUpdate) onUpdate(updatedConcept);
+        return updatedConcept;
+      });
       setRefinePoseIndex(null); 
     } catch (error: any) {
       const isQuota = error.message?.includes("429") || error.message?.includes("RESOURCE_EXHAUSTED");
