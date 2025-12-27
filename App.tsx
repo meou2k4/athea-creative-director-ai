@@ -162,12 +162,7 @@ const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'studio' | 'collection'>('studio');
   const [selectedSceneId, setSelectedSceneId] = useState("winter_window_boutique_chic");
   
-  const [savedConcepts, setSavedConcepts] = useState<Concept[]>(() => {
-    try {
-      const saved = localStorage.getItem('fashionAI_savedConcepts');
-      return saved ? JSON.parse(saved) : [];
-    } catch (e) { return []; }
-  });
+  const [savedConcepts, setSavedConcepts] = useState<Concept[]>([]);
 
   const [input, setInput] = useState<UserInput>({
     productImages: [],
@@ -183,50 +178,29 @@ const App: React.FC = () => {
     fabric: null as string|null 
   });
 
-  // Check for persistent session - giữ lại từ code cũ
+  // --- CODE MỚI: Tải bộ sưu tập từ Google Drive ---
   useEffect(() => {
-    const checkSession = async () => {
-      const storedUser = localStorage.getItem('athea_user');
-      if (storedUser) {
-        try {
-          const parsedUser: User = JSON.parse(storedUser);
-          
-          // 1. Set user tạm thời để UI hiển thị ngay (UX nhanh)
-          setUser(parsedUser);
+    // Chỉ tải khi đang ở tab Collection và đã có User ID
+    if (activeTab === 'collection' && user && (user as any).id) {
+      console.log("Đang tải dữ liệu từ Drive...");
 
-          // 2. Gọi API để kiểm tra xem ID này còn tồn tại/hợp lệ trong Sheet không
-          const res = await fetch('/api/auth', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ 
-              action: 'verify', 
-              id: parsedUser.id 
-            }),
-          });
-
-          // Nếu server trả về lỗi (404 Not Found hoặc 403 Forbidden)
-          if (!res.ok) {
-            console.warn('Session verification failed. Logging out...');
-            handleLogout(); // Xóa data và đá ra màn hình login
-          } else {
-            // Optional: Cập nhật lại thông tin user nếu admin có đổi tên trong sheet
-            const data = await res.json();
-            if (data.success && data.user) {
-              const updatedUser = { ...parsedUser, ...data.user };
-              setUser(updatedUser);
-              localStorage.setItem('athea_user', JSON.stringify(updatedUser));
-            }
+      fetch('/api/collection', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'load',
+          userId: (user as any).id
+        })
+      })
+        .then(res => res.json())
+        .then(data => {
+          if (data.success && Array.isArray(data.concepts)) {
+            setSavedConcepts(data.concepts);
           }
-        } catch (e) {
-          console.error("Failed to verify session:", e);
-          // Lưu ý: Nếu lỗi mạng (network error), ta có thể chọn không logout 
-          // để user vẫn dùng được offline hoặc show thông báo lỗi.
-          // Ở đây tôi giữ nguyên user nếu lỗi mạng, chỉ logout khi parse lỗi.
-        }
-      }
-    };
-    checkSession();
-  }, []);
+        })
+        .catch(err => console.error("Lỗi tải bộ sưu tập:", err));
+    }
+  }, [activeTab, user]);
 
   const handleLogin = (newUser: User) => {
     setUser(newUser);
@@ -271,11 +245,34 @@ const App: React.FC = () => {
     }));
   };
 
-  const handleSaveConcept = (concept: Concept) => {
+  const handleSaveConcept = async (concept: Concept) => {
+    // Kiểm tra xem có User ID chưa
+    if (!user || !(user as any).id) {
+      alert("Vui lòng đăng nhập lại để lưu.");
+      return;
+    }
+
     const newConcept = { ...concept, id: `saved-${Date.now()}` };
-    const newCollection = [newConcept, ...savedConcepts];
-    setSavedConcepts(newCollection);
-    localStorage.setItem('fashionAI_savedConcepts', JSON.stringify(newCollection));
+
+    // 1. Cập nhật giao diện ngay lập tức (để người dùng thấy nhanh)
+    setSavedConcepts(prev => [newConcept, ...prev]);
+
+    // 2. Gửi dữ liệu lên Server để lưu vào Drive
+    try {
+      await fetch('/api/collection', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'save',
+          userId: (user as any).id,
+          conceptData: newConcept,
+          conceptId: newConcept.id
+        })
+      });
+      console.log("Đã lưu concept vào Drive");
+    } catch (error) {
+      console.error("Lỗi lưu concept:", error);
+    }
   };
 
   const handleUpdateActiveConcept = (updatedConcept: Concept) => {
