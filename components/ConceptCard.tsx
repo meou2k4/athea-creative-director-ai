@@ -13,9 +13,11 @@ interface ConceptCardProps {
   onRemove?: (id: string) => void;
   onUpdate?: (concept: Concept) => void;
   isSaved?: boolean;
+  userId?: string; // User ID để lưu ảnh vào Drive
+  isLoadingCollection?: boolean; // Đang tải collection
 }
 
-const ConceptCard: React.FC<ConceptCardProps> = ({ concept, index, userInput, onSave, onRemove, onUpdate, isSaved = false }) => {
+const ConceptCard: React.FC<ConceptCardProps> = ({ concept, index, userInput, onSave, onRemove, onUpdate, isSaved = false, userId, isLoadingCollection = false }) => {
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [isGeneratingAll, setIsGeneratingAll] = useState(false);
   const [isDownloadingAll, setIsDownloadingAll] = useState(false);
@@ -82,20 +84,54 @@ const ConceptCard: React.FC<ConceptCardProps> = ({ concept, index, userInput, on
   };
 
   const handleRegeneratePosePrompt = async (idx: number) => {
+    // Chặn nếu đang tạo ảnh
+    if (loadingIndices.size > 0 || isGeneratingAll) {
+      alert("Đang trong quá trình tạo ảnh. Vui lòng đợi hoàn tất rồi thử lại sau.");
+      return;
+    }
+    
     if (regeneratingPromptIndices.has(idx)) return;
     
     setRegeneratingPromptIndices(prev => new Set(prev).add(idx));
     try {
-      // Get current concept and pose using functional update
-      let currentConcept: Concept;
-      let currentPose: Pose;
-      setLocalConcept(prev => {
-        currentConcept = prev;
-        currentPose = prev.poses[idx];
-        return prev;
-      });
+      // ĐỌC CONCEPT, POSE VÀ KHUÔN TỪ JSON ĐÃ LƯU
+      // Ưu tiên đọc từ concept prop (đã được load từ Drive), fallback về localConcept
+      const sourceConcept = concept || localConcept;
+      const currentPose = sourceConcept.poses?.[idx];
       
-      const newPoseData = await regeneratePosePrompt(currentConcept!, currentPose!, userInput);
+      // Đọc input (khuôn) từ JSON đã lưu - ưu tiên từ concept.input, fallback về userInput prop
+      const savedInput = (sourceConcept as any).input || userInput;
+      
+      // Kiểm tra concept và pose có đầy đủ thông tin không
+      if (!sourceConcept) {
+        console.error("Concept không tồn tại", { localConcept, concept });
+        throw new Error("Concept không tồn tại");
+      }
+      
+      if (!currentPose) {
+        console.error(`Pose ${idx + 1} không tồn tại`, { 
+          localConceptPoses: localConcept?.poses, 
+          conceptPoses: concept?.poses,
+          idx 
+        });
+        throw new Error(`Pose ${idx + 1} không tồn tại`);
+      }
+      
+      // Kiểm tra concept có đầy đủ thông tin cần thiết không
+      if (!sourceConcept.concept_name_vn && !sourceConcept.concept_name_en) {
+        throw new Error("Concept thiếu thông tin tên (concept_name_vn hoặc concept_name_en)");
+      }
+      
+      if (!sourceConcept.sales_target) {
+        throw new Error("Concept thiếu thông tin mục tiêu (sales_target)");
+      }
+      
+      if (!sourceConcept.shoot_location) {
+        throw new Error("Concept thiếu thông tin địa điểm (shoot_location)");
+      }
+      
+      // Sử dụng concept, pose và input (khuôn) từ JSON đã lưu
+      const newPoseData = await regeneratePosePrompt(sourceConcept, currentPose, savedInput);
       
       // Use functional update to preserve all existing images and state
       setLocalConcept(prev => {
@@ -109,7 +145,10 @@ const ConceptCard: React.FC<ConceptCardProps> = ({ concept, index, userInput, on
         };
         
         const updatedConcept = { ...prev, poses: updatedPoses };
-        if (onUpdate) onUpdate(updatedConcept);
+        // Gọi onUpdate sau khi state đã được cập nhật (tránh lỗi setState trong render)
+        setTimeout(() => {
+          if (onUpdate) onUpdate(updatedConcept);
+        }, 0);
         return updatedConcept;
       });
       
@@ -145,7 +184,10 @@ const ConceptCard: React.FC<ConceptCardProps> = ({ concept, index, userInput, on
     }
     const updatedConcept = { ...localConcept, poses: updatedPoses };
     setLocalConcept(updatedConcept);
-    if (onUpdate) onUpdate(updatedConcept);
+    // Gọi onUpdate sau khi state đã được cập nhật (tránh lỗi setState trong render)
+    setTimeout(() => {
+      if (onUpdate) onUpdate(updatedConcept);
+    }, 0);
   };
 
   const updatePosePromptText = (idx: number, text: string) => {
@@ -153,7 +195,10 @@ const ConceptCard: React.FC<ConceptCardProps> = ({ concept, index, userInput, on
     updatedPoses[idx] = { ...updatedPoses[idx], pose_prompt: text };
     const updatedConcept = { ...localConcept, poses: updatedPoses };
     setLocalConcept(updatedConcept);
-    if (onUpdate) onUpdate(updatedConcept);
+    // Gọi onUpdate sau khi state đã được cập nhật (tránh lỗi setState trong render)
+    setTimeout(() => {
+      if (onUpdate) onUpdate(updatedConcept);
+    }, 0);
   };
 
   const handleDownload = (imageUrl: string, title: string) => {
@@ -186,19 +231,49 @@ const ConceptCard: React.FC<ConceptCardProps> = ({ concept, index, userInput, on
   };
 
   const handleGenerateImage = async (poseIndex: number) => {
-    if (loadingIndices.has(poseIndex)) return;
+    // Chặn nếu đang tạo ảnh cho pose này
+    if (loadingIndices.has(poseIndex)) {
+      return;
+    }
+    
+    // Chặn nếu đang tạo tất cả ảnh
+    if (isGeneratingAll) {
+      alert("Đang trong quá trình tạo tất cả ảnh. Vui lòng đợi hoàn tất rồi thử lại sau.");
+      return;
+    }
+    
+    // ĐỌC POSE VÀ KHUÔN TỪ JSON ĐÃ LƯU (concept object)
+    // Ưu tiên đọc từ concept prop (đã được load từ Drive), fallback về localConcept
+    const sourceConcept = concept || localConcept;
+    const currentPose = sourceConcept.poses?.[poseIndex];
+    
+    // Đọc input (khuôn) từ JSON đã lưu - ưu tiên từ concept.input, fallback về userInput prop
+    const savedInput = (sourceConcept as any).input || userInput;
+    
+    // Kiểm tra pose có tồn tại không
+    if (!currentPose) {
+      alert("⚠️ Không tìm thấy pose này trong concept!");
+      return;
+    }
+    
+    // Kiểm tra input (khuôn) có tồn tại không
+    if (!savedInput || !savedInput.productImages || savedInput.productImages.length === 0) {
+      alert("⚠️ Không thể tạo ảnh!\n\nConcept này không có ảnh khuôn (product images) đã lưu trong JSON. Vui lòng:\n1. Quay lại Studio tab\n2. Tải lại ảnh sản phẩm\n3. Lưu concept lại vào bộ sưu tập");
+      return;
+    }
+    
     toggleLoading(poseIndex, true);
     
+    // Xóa lỗi cũ nếu có
+    setErrorIndices(prev => {
+      const next = new Map(prev);
+      next.delete(poseIndex);
+      return next;
+    });
+    
     try {
-      // Get current pose data - use the latest state from localConcept
-      // Since we have useEffect syncing concept prop to localConcept, this should be current
-      const currentPose = localConcept.poses[poseIndex];
-      if (!currentPose) {
-        toggleLoading(poseIndex, false);
-        return;
-      }
-      
-      const imageUrl = await generateFashionImage(currentPose.pose_prompt, userInput, {
+      // Sử dụng pose_prompt từ JSON đã lưu và input (khuôn) từ JSON đã lưu
+      const imageUrl = await generateFashionImage(currentPose.pose_prompt, savedInput, {
         faceLock: currentPose.is_face_locked,
         outfitLock: currentPose.is_outfit_locked
       });
@@ -209,11 +284,14 @@ const ConceptCard: React.FC<ConceptCardProps> = ({ concept, index, userInput, on
         const updatedPoses = [...prev.poses];
         updatedPoses[poseIndex] = { ...updatedPoses[poseIndex], generated_image: imageUrl };
         const updatedConcept = { ...prev, poses: updatedPoses };
-        if (onUpdate) onUpdate(updatedConcept);
+        // Gọi onUpdate sau khi state đã được cập nhật (tránh lỗi setState trong render)
+        setTimeout(() => {
+          if (onUpdate) onUpdate(updatedConcept);
+        }, 0);
         return updatedConcept;
       });
     } catch (error: any) {
-      console.error(error);
+      console.error(`❌ Lỗi tạo ảnh cho pose ${poseIndex + 1}:`, error);
       const isQuota = error.message?.includes("429") || error.message?.includes("RESOURCE_EXHAUSTED");
       const msg = isQuota 
         ? "Đã hết lượt dùng (Quota). Hệ thống sẽ tự động thử lại nếu bạn nhấn 'Tạo lại'." 
@@ -230,7 +308,20 @@ const ConceptCard: React.FC<ConceptCardProps> = ({ concept, index, userInput, on
   };
 
   const handleGenerateAll = async () => {
-    const posesToGenerate = localConcept.poses
+    // ĐỌC POSE VÀ KHUÔN TỪ JSON ĐÃ LƯU
+    // Ưu tiên đọc từ concept prop (đã được load từ Drive), fallback về localConcept
+    const sourceConcept = concept || localConcept;
+    
+    // Đọc input (khuôn) từ JSON đã lưu - ưu tiên từ concept.input, fallback về userInput prop
+    const savedInput = (sourceConcept as any).input || userInput;
+    
+    // Kiểm tra input (khuôn) có tồn tại không
+    if (!savedInput || !savedInput.productImages || savedInput.productImages.length === 0) {
+      alert("⚠️ Không thể tạo ảnh!\n\nConcept này không có ảnh khuôn (product images) đã lưu trong JSON. Vui lòng:\n1. Quay lại Studio tab\n2. Tải lại ảnh sản phẩm\n3. Lưu concept lại vào bộ sưu tập");
+      return;
+    }
+    
+    const posesToGenerate = sourceConcept.poses
       .map((p, i) => ({p, i}))
       .filter(item => !item.p.generated_image);
       
@@ -258,7 +349,8 @@ const ConceptCard: React.FC<ConceptCardProps> = ({ concept, index, userInput, on
           // Staggered start to help avoid immediate 429 quota hits
           await new Promise(resolve => setTimeout(resolve, Math.random() * 1000));
           
-          const imageUrl = await generateFashionImage(p.pose_prompt, userInput, {
+          // Sử dụng pose_prompt từ JSON đã lưu và input (khuôn) từ JSON đã lưu
+          const imageUrl = await generateFashionImage(p.pose_prompt, savedInput, {
             faceLock: p.is_face_locked,
             outfitLock: p.is_outfit_locked
           });
@@ -267,7 +359,10 @@ const ConceptCard: React.FC<ConceptCardProps> = ({ concept, index, userInput, on
             const updatedPoses = [...prev.poses];
             updatedPoses[i] = { ...updatedPoses[i], generated_image: imageUrl };
             const nextConcept = { ...prev, poses: updatedPoses };
-            onUpdate?.(nextConcept);
+            // Gọi onUpdate sau khi state đã được cập nhật (tránh lỗi setState trong render)
+            setTimeout(() => {
+              if (onUpdate) onUpdate(nextConcept);
+            }, 0);
             return nextConcept;
           });
         } catch (e: any) {
@@ -302,6 +397,14 @@ const ConceptCard: React.FC<ConceptCardProps> = ({ concept, index, userInput, on
 
   const handleRefineConfirm = async (instruction: string) => {
     if (refinePoseIndex === null) return;
+    
+    // Chặn nếu đang tạo ảnh
+    if (loadingIndices.size > 0 || isGeneratingAll) {
+      alert("Đang trong quá trình tạo ảnh. Vui lòng đợi hoàn tất rồi thử lại sau.");
+      setRefinePoseIndex(null);
+      return;
+    }
+    
     setIsRefining(true);
     try {
       // Use functional update to get latest state
@@ -323,7 +426,10 @@ const ConceptCard: React.FC<ConceptCardProps> = ({ concept, index, userInput, on
         const updatedPoses = [...prev.poses];
         updatedPoses[refinePoseIndex!] = { ...updatedPoses[refinePoseIndex!], generated_image: refinedImageUrl };
         const updatedConcept = { ...prev, poses: updatedPoses };
-        if (onUpdate) onUpdate(updatedConcept);
+        // Gọi onUpdate sau khi state đã được cập nhật (tránh lỗi setState trong render)
+        setTimeout(() => {
+          if (onUpdate) onUpdate(updatedConcept);
+        }, 0);
         return updatedConcept;
       });
       setRefinePoseIndex(null); 
@@ -385,16 +491,39 @@ const ConceptCard: React.FC<ConceptCardProps> = ({ concept, index, userInput, on
         <div className="flex items-center gap-2">
            {onSave && (
              <button
-               onClick={() => onSave(localConcept)}
-               disabled={isSaved}
-               title="Lưu Concept vào Bộ sưu tập"
-               className={`p-1.5 rounded transition-all ${isSaved ? 'bg-fashion-accent text-black' : 'bg-white/10 hover:bg-white/20 text-white'}`}
+               onClick={() => {
+                 // Chặn nếu đang tạo ảnh
+                 if (loadingIndices.size > 0 || isGeneratingAll) {
+                   alert("Đang trong quá trình tạo ảnh. Vui lòng đợi hoàn tất rồi thử lại sau.");
+                   return;
+                 }
+                 onSave(localConcept);
+               }}
+               disabled={loadingIndices.size > 0 || isGeneratingAll}
+               title={loadingIndices.size > 0 || isGeneratingAll ? "Đang tạo ảnh, vui lòng đợi..." : isSaved ? "Concept đã được lưu (bấm để cập nhật)" : "Lưu Concept vào Bộ sưu tập"}
+               className={`p-1.5 rounded transition-all ${isSaved ? 'bg-fashion-accent text-black' : 'bg-white/10 hover:bg-white/20 text-white'} ${(loadingIndices.size > 0 || isGeneratingAll) ? 'opacity-50 cursor-not-allowed' : ''}`}
              >
                <Bookmark size={18} fill={isSaved ? "currentColor" : "none"} />
              </button>
            )}
            {onRemove && (
-             <button onClick={() => onRemove(localConcept.id)} title="Xóa Concept" className="p-1.5 rounded bg-white/10 hover:bg-red-500/80 text-white transition-all">
+             <button 
+               onClick={() => {
+                 // Chặn nếu đang tạo ảnh hoặc đang tải collection
+                 if (loadingIndices.size > 0 || isGeneratingAll) {
+                   alert("Đang trong quá trình tạo ảnh. Vui lòng đợi hoàn tất rồi thử lại sau.");
+                   return;
+                 }
+                 if (isLoadingCollection) {
+                   alert("Đang trong quá trình tải dữ liệu. Vui lòng đợi hoàn tất rồi thử lại sau.");
+                   return;
+                 }
+                 onRemove(localConcept.id);
+               }} 
+               disabled={loadingIndices.size > 0 || isGeneratingAll || isLoadingCollection}
+               title={loadingIndices.size > 0 || isGeneratingAll ? "Đang tạo ảnh, vui lòng đợi..." : isLoadingCollection ? "Đang tải dữ liệu, vui lòng đợi..." : "Xóa Concept"}
+               className={`p-1.5 rounded bg-white/10 hover:bg-red-500/80 text-white transition-all ${(loadingIndices.size > 0 || isGeneratingAll || isLoadingCollection) ? 'opacity-50 cursor-not-allowed' : ''}`}
+             >
                <Trash2 size={18} />
              </button>
            )}

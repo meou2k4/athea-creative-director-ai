@@ -197,22 +197,106 @@ export const regeneratePosePrompt = async (
 
   return callWithRetry(async () => {
     const ai = new GoogleGenAI({ apiKey });
+    
+    // Đảm bảo có đầy đủ thông tin concept từ JSON đã lưu
+    const conceptNameVn = concept.concept_name_vn || concept.concept_name_en || "Concept";
+    const conceptNameEn = concept.concept_name_en || concept.concept_name_vn || "Concept";
+    const salesTarget = concept.sales_target || "High-end fashion";
+    const shootLocation = concept.shoot_location || "Luxury setting";
+    const currentPoseTitle = pose.pose_title || "Current pose";
+    
+    // Chuẩn bị parts để gửi ảnh khuôn vào AI
+    const parts: any[] = [];
+    
+    // Thêm product images (ảnh sản phẩm) từ JSON đã lưu
+    if (userInput?.productImages && userInput.productImages.length > 0) {
+      userInput.productImages.forEach((img, idx) => {
+        if (img && img.data) {
+          let imageData = img.data;
+          let mimeType = img.mimeType;
+          
+          // Xử lý base64 string
+          if (typeof imageData === 'string' && imageData.startsWith('data:')) {
+            const matches = imageData.match(/^data:([^;]+);base64,(.+)$/);
+            if (matches && matches.length === 3) {
+              mimeType = matches[1];
+              imageData = matches[2];
+            }
+          }
+          
+          if (mimeType && imageData) {
+            parts.push({ inlineData: { mimeType, data: imageData } });
+          }
+        }
+      });
+    }
+    
+    // Thêm face reference (ảnh khuôn mặt) từ JSON đã lưu
+    if (userInput?.faceReference?.data) {
+      let faceData = userInput.faceReference.data;
+      let faceMimeType = userInput.faceReference.mimeType;
+      
+      if (typeof faceData === 'string' && faceData.startsWith('data:')) {
+        const matches = faceData.match(/^data:([^;]+);base64,(.+)$/);
+        if (matches && matches.length === 3) {
+          faceMimeType = matches[1];
+          faceData = matches[2];
+        }
+      }
+      
+      if (faceMimeType && faceData) {
+        parts.push({ inlineData: { mimeType: faceMimeType, data: faceData } });
+      }
+    }
+    
+    // Thêm fabric reference (ảnh vải) từ JSON đã lưu
+    if (userInput?.fabricReference?.data) {
+      let fabricData = userInput.fabricReference.data;
+      let fabricMimeType = userInput.fabricReference.mimeType;
+      
+      if (typeof fabricData === 'string' && fabricData.startsWith('data:')) {
+        const matches = fabricData.match(/^data:([^;]+);base64,(.+)$/);
+        if (matches && matches.length === 3) {
+          fabricMimeType = matches[1];
+          fabricData = matches[2];
+        }
+      }
+      
+      if (fabricMimeType && fabricData) {
+        parts.push({ inlineData: { mimeType: fabricMimeType, data: fabricData } });
+      }
+    }
+    
+    // Tạo prompt text với thông tin concept từ JSON đã lưu
     const promptText = `HÃY TẠO LẠI MỘT POSE KHÁC CHO CONCEPT NÀY.
-Concept: "${concept.concept_name_vn}" / "${concept.concept_name_en}".
-Mục tiêu: "${concept.sales_target}".
-Địa điểm: "${concept.shoot_location}".
-Pose hiện tại (cần thay đổi): "${pose.pose_title}".
+
+THÔNG TIN CONCEPT TỪ JSON ĐÃ LƯU:
+- Concept: "${conceptNameVn}" / "${conceptNameEn}"
+- Mục tiêu: "${salesTarget}"
+- Địa điểm: "${shootLocation}"
+- Pose hiện tại (cần thay đổi): "${currentPoseTitle}"
+
+ẢNH KHUÔN ĐÃ ĐƯỢC GỬI KÈM:
+${userInput?.productImages?.length ? `- ${userInput.productImages.length} ảnh sản phẩm (product images)` : '- Không có ảnh sản phẩm'}
+${userInput?.faceReference?.data ? '- 1 ảnh khuôn mặt (face reference)' : '- Không có ảnh khuôn mặt'}
+${userInput?.fabricReference?.data ? '- 1 ảnh vải (fabric reference)' : '- Không có ảnh vải'}
 
 YÊU CẦU ĐẶC BIỆT TỪ GIÁM ĐỐC SÁNG TẠO:
-1. Sáng tạo vượt bậc: Tạo một pose mới mang tính điện ảnh hoặc thời trang cao cấp (High-Fashion), phá vỡ sự rập khuôn của pose cũ.
-2. Mô tả truyền cảm hứng: Viết lại 'pose_description' (Tiếng Việt) cực kỳ hấp dẫn. Hãy mô tả nó như một tác phẩm nghệ thuật: cách người mẫu biểu đạt linh hồn bộ trang phục, sự tương tác đầy cảm xúc với bối cảnh, và các thuật ngữ chuyên môn về chuyển động, bố cục.
-3. Kỹ thuật hoàn hảo: 'pose_prompt' (Tiếng Anh) phải là một tập hợp các chỉ dẫn kỹ thuật cực kỳ chi tiết cho AI (lighting, lens choice, mood, character identity coherence) để tạo ra bức ảnh đẳng cấp nhất.`;
+1. Phân tích ảnh khuôn: Hãy xem xét kỹ các ảnh sản phẩm, khuôn mặt, và vải đã được gửi kèm. Pose mới phải tôn vinh và làm nổi bật các chi tiết trong ảnh khuôn này.
+2. Sáng tạo vượt bậc: Tạo một pose mới mang tính điện ảnh hoặc thời trang cao cấp (High-Fashion), phá vỡ sự rập khuôn của pose cũ, nhưng vẫn giữ được bản sắc của concept.
+3. Mô tả truyền cảm hứng: Viết lại 'pose_description' (Tiếng Việt) cực kỳ hấp dẫn. Hãy mô tả nó như một tác phẩm nghệ thuật: cách người mẫu biểu đạt linh hồn bộ trang phục, sự tương tác đầy cảm xúc với bối cảnh, và các thuật ngữ chuyên môn về chuyển động, bố cục.
+4. Kỹ thuật hoàn hảo: 'pose_prompt' (Tiếng Anh) phải là một tập hợp các chỉ dẫn kỹ thuật cực kỳ chi tiết cho AI (lighting, lens choice, mood, character identity coherence) để tạo ra bức ảnh đẳng cấp nhất, đảm bảo giữ nguyên khuôn mặt và chi tiết trang phục từ ảnh khuôn.`;
+
+    // Gửi cả text prompt và ảnh khuôn vào AI
+    const contents = parts.length > 0 
+      ? [...parts, promptText]  // Nếu có ảnh, gửi ảnh trước, text sau
+      : promptText;              // Nếu không có ảnh, chỉ gửi text
 
     const response = await ai.models.generateContent({
       model: "gemini-3-pro-preview",
-      contents: promptText,
+      contents: contents,
       config: {
-        systemInstruction: SYSTEM_INSTRUCTION + "\nBạn là một Giám đốc Sáng tạo đầy tham vọng. Hãy tạo ra những nội dung thực sự khác biệt và đẳng cấp. Trả về JSON cho một pose duy nhất.",
+        systemInstruction: SYSTEM_INSTRUCTION + "\nBạn là một Giám đốc Sáng tạo đầy tham vọng. Hãy phân tích kỹ các ảnh khuôn đã được gửi và tạo ra những nội dung thực sự khác biệt và đẳng cấp, phù hợp với concept và ảnh khuôn. Trả về JSON cho một pose duy nhất.",
         responseMimeType: "application/json",
         responseSchema: promptSchema,
       },
@@ -238,18 +322,62 @@ export const generateFashionImage = async (
     const parts: any[] = [];
 
     if (userInput.productImages && userInput.productImages.length > 0) {
-      userInput.productImages.forEach(img => {
-        if (img.data) {
-          parts.push({ inlineData: { mimeType: img.mimeType!, data: img.data } });
+      userInput.productImages.forEach((img, idx) => {
+        if (img && img.data) {
+          // Kiểm tra xem data có phải base64 hợp lệ không
+          let imageData = img.data;
+          let mimeType = img.mimeType;
+          
+          // Nếu là base64 string (data:image/...), extract mimeType và data
+          if (typeof imageData === 'string' && imageData.startsWith('data:')) {
+            const matches = imageData.match(/^data:([^;]+);base64,(.+)$/);
+            if (matches && matches.length === 3) {
+              mimeType = matches[1];
+              imageData = matches[2]; // Chỉ lấy phần base64, không có data: prefix
+            }
+          }
+          
+          if (mimeType && imageData) {
+            parts.push({ inlineData: { mimeType, data: imageData } });
+          }
         }
       });
     }
     
-    if (userInput.faceReference.data && (options?.faceLock !== false)) {
-      parts.push({ inlineData: { mimeType: userInput.faceReference.mimeType!, data: userInput.faceReference.data } });
+    if (userInput.faceReference?.data && (options?.faceLock !== false)) {
+      let faceData = userInput.faceReference.data;
+      let faceMimeType = userInput.faceReference.mimeType;
+      
+      // Nếu là base64 string (data:image/...), extract mimeType và data
+      if (typeof faceData === 'string' && faceData.startsWith('data:')) {
+        const matches = faceData.match(/^data:([^;]+);base64,(.+)$/);
+        if (matches && matches.length === 3) {
+          faceMimeType = matches[1];
+          faceData = matches[2];
+        }
+      }
+      
+      if (faceMimeType && faceData) {
+        parts.push({ inlineData: { mimeType: faceMimeType, data: faceData } });
+      }
     }
-    if (userInput.fabricReference.data && (options?.outfitLock !== false)) {
-      parts.push({ inlineData: { mimeType: userInput.fabricReference.mimeType!, data: userInput.fabricReference.data } });
+    
+    if (userInput.fabricReference?.data && (options?.outfitLock !== false)) {
+      let fabricData = userInput.fabricReference.data;
+      let fabricMimeType = userInput.fabricReference.mimeType;
+      
+      // Nếu là base64 string (data:image/...), extract mimeType và data
+      if (typeof fabricData === 'string' && fabricData.startsWith('data:')) {
+        const matches = fabricData.match(/^data:([^;]+);base64,(.+)$/);
+        if (matches && matches.length === 3) {
+          fabricMimeType = matches[1];
+          fabricData = matches[2];
+        }
+      }
+      
+      if (fabricMimeType && fabricData) {
+        parts.push({ inlineData: { mimeType: fabricMimeType, data: fabricData } });
+      }
     }
 
     let technicalPrompt = prompt;
@@ -272,14 +400,21 @@ export const generateFashionImage = async (
       config: { imageConfig: { aspectRatio: "3:4" } }
     });
     
+    // Trả về base64 để frontend hiển thị ngay
+    // Ảnh sẽ được lưu vào Drive khi người dùng bấm "Lưu Concept"
     for (const part of response.candidates?.[0]?.content?.parts || []) {
-      if (part.inlineData) return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
+      if (part.inlineData) {
+        return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
+      }
     }
     throw new Error("No image was returned from the model.");
   });
 };
 
-export const refineFashionImage = async (imageBase64: string, instruction: string): Promise<string> => {
+export const refineFashionImage = async (
+  imageBase64: string, 
+  instruction: string
+): Promise<string> => {
   const apiKey = (process.env as any).API_KEY || (process.env as any).GEMINI_API_KEY;
   if (!apiKey) throw new Error("API Key is missing");
 
@@ -297,8 +432,13 @@ export const refineFashionImage = async (imageBase64: string, instruction: strin
         ]
       }
     });
+    
+    // Trả về base64 để frontend hiển thị ngay
+    // Ảnh sẽ được lưu vào Drive khi người dùng bấm "Lưu Concept"
     for (const part of response.candidates?.[0]?.content?.parts || []) {
-      if (part.inlineData) return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
+      if (part.inlineData) {
+        return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
+      }
     }
     throw new Error("Image refinement failed.");
   });

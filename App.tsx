@@ -16,7 +16,7 @@ import {
   Shirt, 
   UserCheck, 
   Layers, 
-  Trash2,
+  Trash2, 
   Sun,
   Snowflake,
   Building2,
@@ -35,7 +35,8 @@ import {
   Utensils,
   Store,
   Crown,
-  Gift
+  Gift,
+  Edit2
 } from 'lucide-react';
 
 const PRESET_SCENES = [
@@ -155,6 +156,7 @@ const AtheaLogo = () => (
 const App: React.FC = () => {
   // Login state - giữ lại từ code cũ
   const [user, setUser] = useState<User | null>(null);
+  const [isCheckingAuth, setIsCheckingAuth] = useState(true); // Đang kiểm tra authentication
 
   // UI state mới từ Downloads
   const [data, setData] = useState<FashionAIResponse | null>(null);
@@ -163,6 +165,23 @@ const App: React.FC = () => {
   const [selectedSceneId, setSelectedSceneId] = useState("winter_window_boutique_chic");
   
   const [savedConcepts, setSavedConcepts] = useState<Concept[]>([]);
+  const [loadingCollection, setLoadingCollection] = useState(false);
+  const [collectionLoaded, setCollectionLoaded] = useState(false);
+  const [savingConcept, setSavingConcept] = useState<{isSaving: boolean, conceptId: string | null}>({isSaving: false, conceptId: null});
+  const [showSaveConfirm, setShowSaveConfirm] = useState<{show: boolean, concept: Concept | null, isUpdate?: boolean}>({show: false, concept: null, isUpdate: false});
+  const [saveSuccess, setSaveSuccess] = useState<{show: boolean, isUpdate: boolean}>({show: false, isUpdate: false});
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState<{show: boolean, conceptId: string | null, conceptName: string}>({show: false, conceptId: null, conceptName: ''});
+  const [deletingConcept, setDeletingConcept] = useState<{isDeleting: boolean, conceptId: string | null}>({isDeleting: false, conceptId: null});
+  const [deleteSuccess, setDeleteSuccess] = useState(false);
+  
+  // State để theo dõi dữ liệu chưa lưu
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [hasUnsavedStudioChanges, setHasUnsavedStudioChanges] = useState(false);
+  const [showUnsavedWarning, setShowUnsavedWarning] = useState(false);
+  const [unsavedWarningSource, setUnsavedWarningSource] = useState<'studio' | 'collection'>('collection');
+  const [pendingAction, setPendingAction] = useState<(() => void) | null>(null);
+  const [localCollectionState, setLocalCollectionState] = useState<Map<string, Concept>>(new Map());
+  const [baselineCollectionState, setBaselineCollectionState] = useState<Map<string, Concept>>(new Map()); // Trạng thái ban đầu khi load từ Drive
 
   const [input, setInput] = useState<UserInput>({
     productImages: [],
@@ -178,11 +197,69 @@ const App: React.FC = () => {
     fabric: null as string|null 
   });
 
+  // --- CODE MỚI: Kiểm tra user từ localStorage khi load lại trang ---
+  useEffect(() => {
+    const checkStoredUser = async () => {
+      setIsCheckingAuth(true);
+      try {
+        const storedUserStr = localStorage.getItem('athea_user');
+        if (!storedUserStr) {
+          // Không có user trong localStorage
+          setIsCheckingAuth(false);
+          return;
+        }
+
+        const storedUser = JSON.parse(storedUserStr);
+        if (!storedUser || !storedUser.id) {
+          // User không hợp lệ
+          localStorage.removeItem('athea_user');
+          setIsCheckingAuth(false);
+          return;
+        }
+
+        // Gọi API để verify user status
+        const response = await fetch('/api/auth', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'verify',
+            id: storedUser.id
+          })
+        });
+
+        const data = await response.json();
+
+        if (response.ok && data.success && data.user) {
+          // User hợp lệ và đã được APPROVED
+          setUser(data.user);
+          // Cập nhật localStorage với thông tin mới nhất từ server
+          localStorage.setItem('athea_user', JSON.stringify(data.user));
+        } else {
+          // User không tồn tại hoặc không phải APPROVED
+          console.log('User không hợp lệ hoặc chưa được duyệt:', data.message);
+          localStorage.removeItem('athea_user');
+          setUser(null);
+        }
+      } catch (error) {
+        console.error('Lỗi khi kiểm tra user:', error);
+        // Nếu có lỗi, xóa localStorage để đảm bảo an toàn
+        localStorage.removeItem('athea_user');
+        setUser(null);
+      } finally {
+        setIsCheckingAuth(false);
+      }
+    };
+
+    checkStoredUser();
+  }, []); // Chỉ chạy một lần khi component mount
+
   // --- CODE MỚI: Tải bộ sưu tập từ Google Drive ---
   useEffect(() => {
     // Chỉ tải khi đang ở tab Collection và đã có User ID
     if (activeTab === 'collection' && user && (user as any).id) {
       console.log("Đang tải dữ liệu từ Drive...");
+      setLoadingCollection(true);
+      setCollectionLoaded(false);
 
       fetch('/api/collection', {
         method: 'POST',
@@ -196,9 +273,41 @@ const App: React.FC = () => {
         .then(data => {
           if (data.success && Array.isArray(data.concepts)) {
             setSavedConcepts(data.concepts);
+            // Khởi tạo baseline và localCollectionState với concepts đã load
+            const initialState = new Map<string, Concept>();
+            data.concepts.forEach((concept: Concept) => {
+              initialState.set(concept.id, concept);
+            });
+            // Lưu baseline và local state
+            const baselineMap = new Map<string, Concept>();
+            const localMap = new Map<string, Concept>();
+            data.concepts.forEach((concept: Concept) => {
+              baselineMap.set(concept.id, concept);
+              localMap.set(concept.id, concept);
+            });
+            setBaselineCollectionState(baselineMap);
+            setLocalCollectionState(localMap);
+            setHasUnsavedChanges(false);
+          } else {
+            setSavedConcepts([]);
+            setBaselineCollectionState(new Map());
+            setLocalCollectionState(new Map());
+            setHasUnsavedChanges(false);
           }
+          setCollectionLoaded(true);
         })
-        .catch(err => console.error("Lỗi tải bộ sưu tập:", err));
+        .catch(err => {
+          console.error("Lỗi tải bộ sưu tập:", err);
+          setSavedConcepts([]);
+          setCollectionLoaded(true);
+        })
+        .finally(() => {
+          setLoadingCollection(false);
+        });
+    } else if (activeTab !== 'collection') {
+      // Reset khi chuyển tab
+      setLoadingCollection(false);
+      setCollectionLoaded(false);
     }
   }, [activeTab, user]);
 
@@ -208,19 +317,29 @@ const App: React.FC = () => {
   };
 
   const handleLogout = () => {
-    setUser(null);
-    localStorage.removeItem('athea_user');
-    // Reset state on logout
-    setData(null);
-    setInput({
-      productImages: [],
-      faceReference: { data: null, mimeType: null },
-      fabricReference: { data: null, mimeType: null },
-      context: '', modelStyle: '', suggestions: '', customDescription: '',
-      modelOrigin: 'VN', lock_lighting: true
-    });
-    setPreviews({ products: [], face: null, fabric: null });
-    setLoading({ status: 'idle' });
+    // Kiểm tra unsaved changes trước khi đăng xuất
+    if (hasUnsavedChanges || hasUnsavedStudioChanges) {
+      const source = hasUnsavedChanges ? 'collection' : 'studio';
+      handlePendingAction(() => {
+        setUser(null);
+        localStorage.removeItem('athea_user');
+        setData(null);
+        setSavedConcepts([]);
+        setLocalCollectionState(new Map<string, Concept>());
+        setBaselineCollectionState(new Map<string, Concept>());
+        setHasUnsavedChanges(false);
+        setHasUnsavedStudioChanges(false);
+        setActiveTab('studio');
+      }, source);
+    } else {
+      setUser(null);
+      localStorage.removeItem('athea_user');
+      setData(null);
+      setSavedConcepts([]);
+      setLocalCollectionState(new Map<string, Concept>());
+      setBaselineCollectionState(new Map<string, Concept>());
+      setActiveTab('studio');
+    }
   };
 
   const handleAddProductImage = (data: string, mimeType: string, previewUrl: string) => {
@@ -252,26 +371,126 @@ const App: React.FC = () => {
       return;
     }
 
-    const newConcept = { ...concept, id: `saved-${Date.now()}` };
+    // Kiểm tra xem concept đã tồn tại chưa để hiển thị dialog phù hợp
+    const generateStableId = (concept: Concept): string => {
+      if (concept.id && concept.id.startsWith('saved-')) {
+        return concept.id;
+      }
+      const name = (concept.concept_name_vn || concept.concept_name_en || concept.id || 'concept').toLowerCase().replace(/\s+/g, '_');
+      let hash = 0;
+      for (let i = 0; i < name.length; i++) {
+        const char = name.charCodeAt(i);
+        hash = ((hash << 5) - hash) + char;
+        hash = hash & hash;
+      }
+      return `saved-${Math.abs(hash).toString(36)}`;
+    };
+    const conceptId = generateStableId(concept);
+    const isExisting = savedConcepts.some(c => c.id === conceptId);
 
-    // 1. Cập nhật giao diện ngay lập tức (để người dùng thấy nhanh)
-    setSavedConcepts(prev => [newConcept, ...prev]);
+    // Hiển thị dialog xác nhận (cho phép cả khi đang tải để có thể cập nhật)
+    setShowSaveConfirm({ show: true, concept, isUpdate: isExisting });
+  };
 
-    // 2. Gửi dữ liệu lên Server để lưu vào Drive
+  const confirmSaveConcept = async () => {
+    const conceptToSave = showSaveConfirm.concept;
+    if (!conceptToSave || !user || !(user as any).id) {
+      setShowSaveConfirm({ show: false, concept: null });
+      return;
+    }
+
+    // Đóng dialog xác nhận
+    setShowSaveConfirm({ show: false, concept: null });
+
+    // Tạo ID cố định dựa trên concept_name để đảm bảo cùng concept sẽ có cùng ID
+    // Sử dụng hash đơn giản từ concept_name để tạo ID ổn định
+    const generateStableId = (concept: Concept): string => {
+      // Nếu đã có ID saved- thì giữ nguyên
+      if (concept.id && concept.id.startsWith('saved-')) {
+        return concept.id;
+      }
+      // Tạo ID mới dựa trên tên concept (ổn định, không thay đổi)
+      const name = (concept.concept_name_vn || concept.concept_name_en || concept.id || 'concept').toLowerCase().replace(/\s+/g, '_');
+      // Tạo hash đơn giản từ tên
+      let hash = 0;
+      for (let i = 0; i < name.length; i++) {
+        const char = name.charCodeAt(i);
+        hash = ((hash << 5) - hash) + char;
+        hash = hash & hash; // Convert to 32bit integer
+      }
+      return `saved-${Math.abs(hash).toString(36)}`;
+    };
+    
+    const conceptId = generateStableId(conceptToSave);
+    // Đảm bảo input được lưu cùng concept (để dùng lại khi tạo ảnh)
+    const newConcept = { 
+      ...conceptToSave, 
+      id: conceptId,
+      input: input // Lưu input (productImages, faceReference, fabricReference) cùng concept
+    };
+    
+    // Kiểm tra xem concept đã tồn tại trong savedConcepts chưa (dựa trên ID)
+    const isExisting = savedConcepts.some(c => c.id === conceptId);
+    
+    // Cập nhật showSaveConfirm để biết đang update hay create
+    setShowSaveConfirm(prev => ({ ...prev, isUpdate: isExisting }));
+
+    // Hiển thị loading animation
+    setSavingConcept({ isSaving: true, conceptId });
+
     try {
-      await fetch('/api/collection', {
+      // Gửi dữ liệu lên Server để lưu vào Drive
+      const response = await fetch('/api/collection', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: 'save',
           userId: (user as any).id,
           conceptData: newConcept,
-          conceptId: newConcept.id
+          conceptId: conceptId
         })
       });
-      console.log("Đã lưu concept vào Drive");
+
+      const result = await response.json();
+      
+      if (result.success) {
+        // Cập nhật giao diện sau khi lưu thành công
+        if (isExisting) {
+          // Update concept đã tồn tại
+          setSavedConcepts(prev => prev.map(c => c.id === conceptId ? newConcept : c));
+        } else {
+          // Thêm concept mới
+          setSavedConcepts(prev => [newConcept, ...prev]);
+        }
+        
+        // Reset unsaved changes cho concept này vì đã được lưu
+        // Cập nhật cả baseline và local state
+        setBaselineCollectionState(prev => {
+          const next = new Map(prev);
+          next.set(conceptId, newConcept);
+          return next;
+        });
+        setLocalCollectionState(prev => {
+          const next = new Map(prev);
+          next.set(conceptId, newConcept);
+          return next;
+        });
+        setHasUnsavedChanges(false);
+        
+        // Hiển thị thông báo thành công
+        setSaveSuccess({ show: true, isUpdate: isExisting });
+        setTimeout(() => setSaveSuccess({ show: false, isUpdate: false }), 3000);
+        
+        console.log(isExisting ? "Đã cập nhật concept trên Drive" : "Đã lưu concept vào Drive");
+      } else {
+        throw new Error(result.message || 'Lỗi lưu concept');
+      }
     } catch (error) {
       console.error("Lỗi lưu concept:", error);
+      alert("Không thể lưu concept. Vui lòng thử lại sau.");
+    } finally {
+      // Tắt loading animation
+      setSavingConcept({ isSaving: false, conceptId: null });
     }
   };
 
@@ -284,15 +503,260 @@ const App: React.FC = () => {
   };
 
   const handleUpdateConcept = (updatedConcept: Concept) => {
+    // Cập nhật local state để theo dõi thay đổi (KHÔNG cập nhật savedConcepts ngay)
+    setLocalCollectionState(prev => {
+      const next = new Map<string, Concept>(prev);
+      next.set(updatedConcept.id, updatedConcept);
+      
+      // Kiểm tra xem có thay đổi chưa lưu không (so sánh với baseline)
+      const baselineConcept = baselineCollectionState.get(updatedConcept.id);
+      if (baselineConcept) {
+        const hasChanges = hasConceptChanged(baselineConcept, updatedConcept);
+        // Kiểm tra các concept khác
+        let otherHasChanges = false;
+        next.forEach((localConcept, conceptId) => {
+          if (conceptId !== updatedConcept.id) {
+            const otherBaseline = baselineCollectionState.get(conceptId);
+            if (otherBaseline && hasConceptChanged(otherBaseline, localConcept)) {
+              otherHasChanges = true;
+            }
+          }
+        });
+        setHasUnsavedChanges(hasChanges || otherHasChanges);
+      } else {
+        // Nếu không có baseline, có thể là concept mới, không tính là unsaved
+        // Kiểm tra các concept khác
+        let otherHasChanges = false;
+        next.forEach((localConcept, conceptId) => {
+          const otherBaseline = baselineCollectionState.get(conceptId);
+          if (otherBaseline && hasConceptChanged(otherBaseline, localConcept)) {
+            otherHasChanges = true;
+          }
+        });
+        setHasUnsavedChanges(otherHasChanges);
+      }
+      
+      return next;
+    });
+    
+    // Cập nhật savedConcepts và localStorage để hiển thị UI (nhưng vẫn giữ baseline để so sánh)
     const newCollection = savedConcepts.map(c => c.id === updatedConcept.id ? updatedConcept : c);
     setSavedConcepts(newCollection);
     localStorage.setItem('fashionAI_savedConcepts', JSON.stringify(newCollection));
   };
+  
+  // Hàm kiểm tra xem một concept có thay đổi so với baseline không
+  const hasConceptChanged = (baseline: Concept, current: Concept): boolean => {
+    if (!baseline.poses || !current.poses) return false;
+    
+    for (let i = 0; i < current.poses.length; i++) {
+      const currentPose = current.poses[i];
+      const baselinePose = baseline.poses[i];
+      
+      if (!baselinePose) continue;
+      
+      // Kiểm tra generated_image mới
+      if (currentPose.generated_image && currentPose.generated_image !== baselinePose.generated_image) {
+        return true;
+      }
+      
+      // Kiểm tra prompt đã thay đổi
+      if (currentPose.pose_prompt !== baselinePose.pose_prompt) {
+        return true;
+      }
+      
+      // Kiểm tra lock states đã thay đổi
+      if (currentPose.is_face_locked !== baselinePose.is_face_locked || 
+          currentPose.is_outfit_locked !== baselinePose.is_outfit_locked) {
+        return true;
+      }
+    }
+    
+    return false;
+  };
+  
+  // Hàm kiểm tra các concept khác có thay đổi không
+  const checkOtherConceptsHaveChanges = (localState: Map<string, Concept>): boolean => {
+    let hasChanges = false;
+    localState.forEach((localConcept, conceptId) => {
+      const baselineConcept = baselineCollectionState.get(conceptId);
+      if (baselineConcept && hasConceptChanged(baselineConcept, localConcept)) {
+        hasChanges = true;
+      }
+    });
+    return hasChanges;
+  };
+  
+  // Hàm kiểm tra xem có dữ liệu chưa lưu không (so sánh với baseline)
+  const checkUnsavedChanges = () => {
+    const hasChanges = checkOtherConceptsHaveChanges(localCollectionState);
+    setHasUnsavedChanges(hasChanges);
+    return hasChanges;
+  };
+  
+  // Hàm xử lý khi người dùng muốn thực hiện action có thể mất dữ liệu
+  const handlePendingAction = (action: () => void, source: 'studio' | 'collection' = 'collection') => {
+    const hasChanges = source === 'studio' ? hasUnsavedStudioChanges : hasUnsavedChanges;
+    if (hasChanges) {
+      setUnsavedWarningSource(source);
+      setPendingAction(() => action);
+      setShowUnsavedWarning(true);
+    } else {
+      action();
+    }
+  };
+  
+  // Hàm xác nhận bỏ qua cảnh báo và thực hiện action
+  const confirmDiscardChanges = () => {
+    setShowUnsavedWarning(false);
+    
+    if (unsavedWarningSource === 'studio') {
+      // Reset Studio state
+      setHasUnsavedStudioChanges(false);
+      setData(null);
+      setInput({
+        productImages: [],
+        faceReference: { data: null, mimeType: null },
+        fabricReference: { data: null, mimeType: null },
+        context: '', modelStyle: '', suggestions: '', customDescription: '',
+        modelOrigin: 'VN', lock_lighting: true
+      });
+      setPreviews({ products: [], face: null, fabric: null });
+      setLoading({ status: 'idle' });
+    } else {
+      // Reset Collection state
+      setHasUnsavedChanges(false);
+      // Reset local state về baseline
+      const resetMap = new Map<string, Concept>();
+      baselineCollectionState.forEach((concept, id) => {
+        resetMap.set(id, concept);
+      });
+      setLocalCollectionState(resetMap);
+      // Reload savedConcepts từ baseline
+      const resetConcepts: Concept[] = [];
+      baselineCollectionState.forEach((concept) => {
+        resetConcepts.push(concept);
+      });
+      setSavedConcepts(resetConcepts);
+    }
+    
+    if (pendingAction) {
+      pendingAction();
+      setPendingAction(null);
+    }
+  };
+  
+  // Hàm hủy bỏ action
+  const cancelPendingAction = () => {
+    setShowUnsavedWarning(false);
+    setPendingAction(null);
+  };
+  
+  // Thêm beforeunload handler để cảnh báo khi đóng tab/tải lại trang
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (hasUnsavedChanges || hasUnsavedStudioChanges) {
+        e.preventDefault();
+        e.returnValue = ''; // Chrome requires returnValue to be set
+        return ''; // Some browsers require return value
+      }
+    };
+    
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, [hasUnsavedChanges, hasUnsavedStudioChanges]);
+  
+  // Kiểm tra unsaved changes khi localCollectionState thay đổi
+  useEffect(() => {
+    if (activeTab === 'collection' && localCollectionState.size > 0) {
+      checkUnsavedChanges();
+    }
+  }, [localCollectionState, activeTab]);
+
+  // Kiểm tra dữ liệu chưa lưu ở Studio (có input hoặc data chưa được lưu)
+  useEffect(() => {
+    if (activeTab === 'studio') {
+      // Có dữ liệu chưa lưu nếu:
+      // 1. Có input (productImages, faceReference, fabricReference, customDescription)
+      // 2. Hoặc có data (concepts đã generate) nhưng chưa lưu vào collection
+      const hasInput = input.productImages.length > 0 || 
+                       input.faceReference.data !== null || 
+                       input.fabricReference.data !== null || 
+                       input.customDescription.trim() !== '';
+      const hasData = data !== null;
+      setHasUnsavedStudioChanges(hasInput || hasData);
+    } else {
+      setHasUnsavedStudioChanges(false);
+    }
+  }, [input, data, activeTab]);
 
   const handleRemoveConcept = (id: string) => {
-    const newCollection = savedConcepts.filter(c => c.id !== id);
-    setSavedConcepts(newCollection);
-    localStorage.setItem('fashionAI_savedConcepts', JSON.stringify(newCollection));
+    // Chặn nếu đang tải collection
+    if (loadingCollection) {
+      alert("Đang trong quá trình tải dữ liệu. Vui lòng đợi hoàn tất rồi thử lại sau.");
+      return;
+    }
+    
+    // Tìm concept để lấy tên hiển thị trong dialog
+    const concept = savedConcepts.find(c => c.id === id);
+    if (concept) {
+      setShowDeleteConfirm({ 
+        show: true, 
+        conceptId: id, 
+        conceptName: concept.concept_name_vn || concept.concept_name_en || 'Concept này' 
+      });
+    }
+  };
+
+  const confirmDeleteConcept = async () => {
+    const conceptIdToDelete = showDeleteConfirm.conceptId;
+    if (!conceptIdToDelete || !user || !(user as any).id) {
+      setShowDeleteConfirm({ show: false, conceptId: null, conceptName: '' });
+      return;
+    }
+
+    // Đóng dialog xác nhận
+    setShowDeleteConfirm({ show: false, conceptId: null, conceptName: '' });
+
+    // Hiển thị loading animation
+    setDeletingConcept({ isDeleting: true, conceptId: conceptIdToDelete });
+
+    try {
+      // Gọi API để xóa concept và tất cả ảnh liên quan trên Drive
+      const response = await fetch('/api/collection', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: (user as any).id,
+          conceptId: conceptIdToDelete
+        })
+      });
+
+      const result = await response.json();
+      
+      if (result.success) {
+        // Cập nhật giao diện sau khi xóa thành công
+        const newCollection = savedConcepts.filter(c => c.id !== conceptIdToDelete);
+        setSavedConcepts(newCollection);
+        
+        // Hiển thị thông báo thành công
+        setDeleteSuccess(true);
+        setTimeout(() => setDeleteSuccess(false), 3000);
+        
+        console.log("Đã xóa concept và tất cả ảnh liên quan từ Drive");
+      } else {
+        throw new Error(result.message || 'Lỗi xóa concept');
+      }
+    } catch (error) {
+      console.error("Lỗi xóa concept:", error);
+      alert("Không thể xóa concept. Vui lòng thử lại sau.");
+    } finally {
+      // Tắt loading animation
+      setDeletingConcept({ isDeleting: false, conceptId: null });
+    }
   };
 
   const handleAnalyze = async () => {
@@ -330,6 +794,18 @@ const App: React.FC = () => {
     setLoading({ status: 'idle' });
   };
 
+  // Hiển thị loading screen khi đang kiểm tra authentication
+  if (isCheckingAuth) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="flex flex-col items-center">
+          <div className="w-16 h-16 border-4 border-fashion-accent border-t-transparent rounded-full animate-spin mb-4"></div>
+          <p className="text-gray-600 font-medium">Đang kiểm tra...</p>
+        </div>
+      </div>
+    );
+  }
+
   // If not authenticated, show Login Screen - giữ lại từ code cũ
   if (!user) {
     return <Login onLogin={handleLogin} />;
@@ -340,7 +816,15 @@ const App: React.FC = () => {
     <div className="min-h-screen bg-gray-50 text-fashion-black font-sans">
       <header className="fixed top-0 left-0 right-0 bg-white/90 backdrop-blur-md z-50 border-b border-gray-200">
         <div className="max-w-[1600px] mx-auto px-6 h-16 flex items-center justify-between">
-          <div className="flex items-center cursor-pointer" onClick={() => setActiveTab('studio')}>
+          <div className="flex items-center cursor-pointer" onClick={() => {
+            if (activeTab === 'collection' && hasUnsavedChanges) {
+              handlePendingAction(() => setActiveTab('studio'), 'collection');
+            } else if (activeTab === 'studio' && hasUnsavedStudioChanges) {
+              handlePendingAction(() => setActiveTab('studio'), 'studio');
+            } else {
+              setActiveTab('studio');
+            }
+          }}>
             <AtheaLogo />
             <div className="flex flex-col leading-none">
                <h1 className="font-serif text-lg font-bold tracking-tight">Giám Đốc Sáng Tạo</h1>
@@ -349,8 +833,20 @@ const App: React.FC = () => {
           </div>
           <div className="flex items-center gap-4">
             <nav className="flex items-center bg-gray-100 p-1 rounded-lg">
-              <button onClick={() => setActiveTab('studio')} className={`px-4 py-1.5 rounded-md text-xs font-bold uppercase ${activeTab === 'studio' ? 'bg-white text-black shadow-sm' : 'text-gray-500'}`}><LayoutGrid size={14} className="inline mr-2" /> Studio</button>
-              <button onClick={() => setActiveTab('collection')} className={`px-4 py-1.5 rounded-md text-xs font-bold uppercase ${activeTab === 'collection' ? 'bg-white text-black shadow-sm' : 'text-gray-500'}`}><Bookmark size={14} className="inline mr-2" /> Bộ sưu tập</button>
+              <button onClick={() => {
+                if (activeTab === 'collection' && hasUnsavedChanges) {
+                  handlePendingAction(() => setActiveTab('studio'), 'collection');
+                } else {
+                  setActiveTab('studio');
+                }
+              }} className={`px-4 py-1.5 rounded-md text-xs font-bold uppercase ${activeTab === 'studio' ? 'bg-white text-black shadow-sm' : 'text-gray-500'}`}><LayoutGrid size={14} className="inline mr-2" /> Studio</button>
+              <button onClick={() => {
+                if (activeTab === 'studio' && hasUnsavedStudioChanges) {
+                  handlePendingAction(() => setActiveTab('collection'), 'studio');
+                } else {
+                  setActiveTab('collection');
+                }
+              }} className={`px-4 py-1.5 rounded-md text-xs font-bold uppercase ${activeTab === 'collection' ? 'bg-white text-black shadow-sm' : 'text-gray-500'}`}><Bookmark size={14} className="inline mr-2" /> Bộ sưu tập</button>
             </nav>
             <div className="flex items-center gap-3 border-l border-gray-200 pl-4">
               <span className="hidden md:inline text-xs text-gray-600 font-medium">{user.name}</span>
@@ -512,7 +1008,12 @@ const App: React.FC = () => {
                 <div className="space-y-8 animate-fade-in pb-20">
                   <h2 className="font-serif text-3xl mb-8 flex items-center gap-3"><span className="w-8 h-[1px] bg-black"></span> 03 Concepts x 05 Poses</h2>
                   <div className="grid grid-cols-1 gap-8">
-                    {data.concepts.map((concept, idx) => <ConceptCard key={concept.id} concept={concept} index={idx} userInput={input} onSave={handleSaveConcept} onUpdate={handleUpdateActiveConcept} />)}
+                    {data.concepts.map((concept, idx) => <ConceptCard key={concept.id} concept={concept} index={idx} userInput={input} onSave={handleSaveConcept} onUpdate={handleUpdateActiveConcept} userId={(user as any)?.id} isLoadingCollection={loadingCollection} isSaved={savedConcepts.some(c => {
+                      // Check xem concept này đã được lưu chưa dựa trên tên
+                      const savedName = c.concept_name_vn || c.concept_name_en;
+                      const currentName = concept.concept_name_vn || concept.concept_name_en;
+                      return savedName === currentName;
+                    })} />)}
                   </div>
                 </div>
               )}
@@ -521,18 +1022,220 @@ const App: React.FC = () => {
         ) : (
           <div className="max-w-4xl mx-auto min-h-[60vh]">
             <h2 className="font-serif text-3xl text-gray-900 mb-8 border-b pb-4">Bộ sưu tập ATHEA</h2>
-            {savedConcepts.length === 0 ? (
-               <div className="flex flex-col items-center justify-center py-20 text-center text-gray-400 bg-white rounded-2xl border border-dashed border-gray-200">
-                  <Bookmark size={48} className="mb-4 opacity-20" /><p className="text-lg font-medium">Chưa có concept nào được lưu</p>
-               </div>
-            ) : (
-               <div className="grid grid-cols-1 gap-8">
-                  {savedConcepts.map((concept, index) => <ConceptCard key={concept.id} concept={concept} index={index} userInput={input} onRemove={handleRemoveConcept} onUpdate={handleUpdateConcept} />)}
-               </div>
-            )}
+            {loadingCollection ? (
+              <div className="flex flex-col items-center justify-center py-20 text-center">
+                <div className="w-16 h-16 border-4 border-fashion-accent border-t-transparent rounded-full animate-spin mb-6"></div>
+                <p className="text-gray-600 font-medium">Đang tải dữ liệu từ Drive...</p>
+              </div>
+            ) : collectionLoaded && savedConcepts.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-20 text-center text-gray-400 bg-white rounded-2xl border border-dashed border-gray-200">
+                <Bookmark size={48} className="mb-4 opacity-20" />
+                <p className="text-lg font-medium">Không tìm thấy dữ liệu nào</p>
+                <p className="text-sm text-gray-400 mt-2">Bạn chưa lưu concept nào vào bộ sưu tập</p>
+              </div>
+            ) : savedConcepts.length > 0 ? (
+              <div className="grid grid-cols-1 gap-8">
+                {savedConcepts.map((concept, index) => {
+                  // LUÔN dùng input từ concept đã lưu (đã được restore từ Drive)
+                  // Không fallback về input từ state vì state có thể bị reset khi load lại trang
+                  const conceptUserInput = (concept as any).input;
+                  
+                  // Ưu tiên dùng input từ concept, fallback về input từ state nếu cần
+                  // ConceptCard sẽ tự kiểm tra và hiển thị thông báo nếu không có input hợp lệ
+                  const finalUserInput = conceptUserInput || input;
+                  
+                  return <ConceptCard 
+                    key={concept.id} 
+                    concept={concept} 
+                    index={index} 
+                    userInput={finalUserInput} 
+                    onSave={handleSaveConcept} 
+                    onRemove={handleRemoveConcept} 
+                    onUpdate={(updatedConcept) => {
+                      handleUpdateConcept(updatedConcept);
+                      // Cập nhật local state để theo dõi thay đổi
+                      setLocalCollectionState(prev => {
+                        const next = new Map(prev);
+                        next.set(updatedConcept.id, updatedConcept);
+                        return next;
+                      });
+                    }} 
+                    userId={(user as any)?.id} 
+                    isLoadingCollection={loadingCollection} 
+                    isSaved={true} 
+                  />;
+                })}
+              </div>
+            ) : null}
           </div>
         )}
       </main>
+
+      {/* Dialog xác nhận lưu/cập nhật */}
+      {showSaveConfirm.show && showSaveConfirm.concept && (
+        <div className="fixed inset-0 z-[200] bg-black/50 backdrop-blur-sm flex items-center justify-center animate-fade-in">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full mx-4 p-6 animate-fade-in-down">
+            <h3 className="font-serif text-xl font-bold text-gray-900 mb-2">
+              {showSaveConfirm.isUpdate ? "Xác nhận cập nhật Concept" : "Xác nhận lưu Concept"}
+            </h3>
+            <p className="text-gray-600 mb-6">
+              {showSaveConfirm.isUpdate 
+                ? <>Bạn có chắc chắn muốn cập nhật concept <strong>"{showSaveConfirm.concept.concept_name_vn}"</strong>? Các thay đổi sẽ được lưu vào bộ sưu tập.</>
+                : <>Bạn có chắc chắn muốn lưu concept <strong>"{showSaveConfirm.concept.concept_name_vn}"</strong> vào bộ sưu tập?</>}
+            </p>
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => setShowSaveConfirm({ show: false, concept: null, isUpdate: false })}
+                className="px-4 py-2 text-gray-600 hover:text-gray-800 font-medium transition-colors"
+              >
+                Hủy
+              </button>
+              <button
+                onClick={confirmSaveConcept}
+                className="px-4 py-2 bg-black text-white rounded-lg hover:bg-gray-800 font-medium transition-colors flex items-center gap-2"
+              >
+                {showSaveConfirm.isUpdate ? (
+                  <>
+                    <Edit2 size={16} />
+                    Xác nhận cập nhật
+                  </>
+                ) : (
+                  <>
+                    <Bookmark size={16} />
+                    Xác nhận lưu
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Loading animation khi đang lưu */}
+      {savingConcept.isSaving && (
+        <div className="fixed inset-0 z-[199] bg-black/30 backdrop-blur-sm flex items-center justify-center animate-fade-in">
+          <div className="bg-white rounded-2xl shadow-2xl p-8 flex flex-col items-center gap-4 animate-fade-in-down">
+            <div className="w-16 h-16 border-4 border-fashion-accent border-t-transparent rounded-full animate-spin"></div>
+            <p className="text-gray-700 font-medium">Đang lưu concept vào bộ sưu tập...</p>
+            <p className="text-gray-400 text-sm">Vui lòng đợi trong giây lát</p>
+          </div>
+        </div>
+      )}
+
+      {/* Dialog cảnh báo mất dữ liệu chưa lưu */}
+      {showUnsavedWarning && (
+        <div className="fixed inset-0 z-[200] bg-black/50 backdrop-blur-sm flex items-center justify-center animate-fade-in">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full mx-4 p-6 animate-fade-in-down">
+            <div className="flex items-start gap-4 mb-4">
+              <div className="w-12 h-12 bg-yellow-100 rounded-full flex items-center justify-center flex-shrink-0">
+                <AlertTriangle size={24} className="text-yellow-600" />
+              </div>
+              <div className="flex-1">
+                <h3 className="font-serif text-xl font-bold text-gray-900 mb-2">
+                  Cảnh báo: Dữ liệu chưa lưu
+                </h3>
+                <p className="text-gray-600 text-sm leading-relaxed">
+                  {unsavedWarningSource === 'studio' 
+                    ? 'Bạn có dữ liệu chưa được lưu trong Studio. Nếu tiếp tục, tất cả các thay đổi chưa lưu sẽ bị mất.'
+                    : 'Bạn có dữ liệu chưa được lưu trong Bộ sưu tập. Nếu tiếp tục, tất cả các thay đổi chưa lưu sẽ bị mất.'}
+                </p>
+                <p className="text-gray-500 text-xs mt-2">
+                  Vui lòng lưu các thay đổi trước khi tiếp tục hoặc xác nhận để bỏ qua.
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-3 justify-end mt-6">
+              <button
+                onClick={cancelPendingAction}
+                className="px-4 py-2 text-gray-600 hover:text-gray-800 font-medium transition-colors"
+              >
+                Hủy
+              </button>
+              <button
+                onClick={confirmDiscardChanges}
+                className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 font-medium transition-colors flex items-center gap-2"
+              >
+                <AlertTriangle size={16} />
+                Bỏ qua và tiếp tục
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Thông báo thành công */}
+      {saveSuccess.show && (
+        <div className="fixed top-24 right-6 z-[200] bg-green-500 text-white rounded-xl shadow-2xl p-4 flex items-center gap-3 animate-fade-in-down">
+          <div className="w-8 h-8 bg-white/20 rounded-full flex items-center justify-center">
+            {saveSuccess.isUpdate ? (
+              <Edit2 size={18} className="fill-white" />
+            ) : (
+              <Bookmark size={18} className="fill-white" />
+            )}
+          </div>
+          <div>
+            <p className="font-bold">{saveSuccess.isUpdate ? "Cập nhật thành công!" : "Lưu thành công!"}</p>
+            <p className="text-sm text-white/90">
+              {saveSuccess.isUpdate 
+                ? "Concept đã được cập nhật trong bộ sưu tập"
+                : "Concept đã được lưu vào bộ sưu tập"}
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Dialog xác nhận xóa */}
+      {showDeleteConfirm.show && showDeleteConfirm.conceptId && (
+        <div className="fixed inset-0 z-[200] bg-black/50 backdrop-blur-sm flex items-center justify-center animate-fade-in">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full mx-4 p-6 animate-fade-in-down">
+            <h3 className="font-serif text-xl font-bold text-gray-900 mb-2">Xác nhận xóa Concept</h3>
+            <p className="text-gray-600 mb-6">
+              Bạn có chắc chắn muốn xóa concept <strong>"{showDeleteConfirm.conceptName}"</strong>?
+              <br />
+              <span className="text-sm text-red-600 font-medium">Hành động này sẽ xóa vĩnh viễn concept và tất cả ảnh liên quan trên Drive.</span>
+            </p>
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => setShowDeleteConfirm({ show: false, conceptId: null, conceptName: '' })}
+                className="px-4 py-2 text-gray-600 hover:text-gray-800 font-medium transition-colors"
+              >
+                Hủy
+              </button>
+              <button
+                onClick={confirmDeleteConcept}
+                className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 font-medium transition-colors flex items-center gap-2"
+              >
+                <Trash2 size={16} />
+                Xác nhận xóa
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Loading animation khi đang xóa */}
+      {deletingConcept.isDeleting && (
+        <div className="fixed inset-0 z-[199] bg-black/30 backdrop-blur-sm flex items-center justify-center animate-fade-in">
+          <div className="bg-white rounded-2xl shadow-2xl p-8 flex flex-col items-center gap-4 animate-fade-in-down">
+            <div className="w-16 h-16 border-4 border-red-500 border-t-transparent rounded-full animate-spin"></div>
+            <p className="text-gray-700 font-medium">Đang xóa concept và tất cả ảnh liên quan...</p>
+            <p className="text-gray-400 text-sm">Vui lòng đợi trong giây lát</p>
+          </div>
+        </div>
+      )}
+
+      {/* Thông báo xóa thành công */}
+      {deleteSuccess && (
+        <div className="fixed top-24 right-6 z-[200] bg-red-500 text-white rounded-xl shadow-2xl p-4 flex items-center gap-3 animate-fade-in-down">
+          <div className="w-8 h-8 bg-white/20 rounded-full flex items-center justify-center">
+            <Trash2 size={18} className="fill-white" />
+          </div>
+          <div>
+            <p className="font-bold">Xóa thành công!</p>
+            <p className="text-sm text-white/90">Concept và tất cả ảnh đã được xóa khỏi Drive</p>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
