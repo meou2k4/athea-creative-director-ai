@@ -5,6 +5,7 @@ import { FashionAIResponse, LoadingState, UserInput, Concept, ImageRef, User } f
 import ImageUploader from './components/ImageUploader';
 import ConceptCard from './components/ConceptCard';
 import { Login } from './components/Login';
+import { getApiUrl } from './utils/api';
 import { 
   Sparkles, 
   Settings2, 
@@ -218,7 +219,7 @@ const App: React.FC = () => {
         }
 
         // Gọi API để verify user status
-        const response = await fetch('/api/auth', {
+        const response = await fetch(getApiUrl('/api/auth'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -261,7 +262,7 @@ const App: React.FC = () => {
       setLoadingCollection(true);
       setCollectionLoaded(false);
 
-      fetch('/api/collection', {
+      fetch(getApiUrl('/api/collection'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -440,7 +441,7 @@ const App: React.FC = () => {
 
     try {
       // Gửi dữ liệu lên Server để lưu vào Drive
-      const response = await fetch('/api/collection', {
+      const response = await fetch(getApiUrl('/api/collection'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -726,7 +727,7 @@ const App: React.FC = () => {
 
     try {
       // Gọi API để xóa concept và tất cả ảnh liên quan trên Drive
-      const response = await fetch('/api/collection', {
+      const response = await fetch(getApiUrl('/api/collection'), {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

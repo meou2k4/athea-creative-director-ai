@@ -73,8 +73,16 @@ GOOGLE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\nYour private key here\n-----END
 
 # Google Drive Configuration (Bắt buộc - dùng cùng Service Account)
 # Service Account cần có quyền truy cập Google Drive
+GOOGLE_DRIVE_ROOT_FOLDER_ID=your_drive_folder_id_here
+GOOGLE_CLIENT_ID=your_oauth2_client_id
+GOOGLE_CLIENT_SECRET=your_oauth2_client_secret
+GOOGLE_REFRESH_TOKEN=your_oauth2_refresh_token
 
-# Server Port (Tùy chọn, mặc định: 3001)
+# API Configuration
+# Backend URL (cho production - Render.com)
+VITE_API_BASE_URL=https://athea-creative-director-ai.onrender.com
+
+# Server Port (Tùy chọn, mặc định: 3001) - chỉ dùng cho local development
 PORT=3001
 ```
 
@@ -130,6 +138,29 @@ npm run dev
 ```
 
 Sau đó mở trình duyệt tại: `http://localhost:3000`
+
+### 6. Cấu hình Backend trên Render.com (Production)
+
+Nếu bạn muốn deploy backend lên Render.com:
+
+1. **Tạo Web Service trên Render:**
+   - Vào [Render Dashboard](https://dashboard.render.com/)
+   - Tạo Web Service mới
+   - Connect repository của bạn
+   - Chọn `server.js` làm Start Command: `node server.js`
+
+2. **Cấu hình Environment Variables trên Render:**
+   - Thêm tất cả các biến môi trường từ `.env` vào Render Dashboard
+   - Đảm bảo `PORT` được set (Render tự động set, nhưng có thể override)
+
+3. **Cấu hình Frontend (Vercel) để kết nối với Render:**
+   - Thêm biến môi trường `VITE_API_BASE_URL` trong Vercel Dashboard
+   - Set giá trị: `https://your-render-app.onrender.com`
+   - Ví dụ: `https://athea-creative-director-ai.onrender.com`
+
+**Lưu ý:**
+- Trong **development**: Frontend tự động proxy đến `localhost:3001` (không cần set `VITE_API_BASE_URL`)
+- Trong **production**: Frontend sẽ gọi trực tiếp đến Render backend URL
 
 ## 📖 Hướng dẫn sử dụng
 

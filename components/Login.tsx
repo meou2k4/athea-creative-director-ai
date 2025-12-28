@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Button } from './Button'; 
-import { User } from '../types';   
+import { User } from '../types';
+import { getApiUrl } from '../utils/api';   
 
 interface LoginProps {
   onLogin: (user: User) => void;
@@ -74,7 +75,7 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
 
     try {
       // 2. Gọi API Serverless
-      const res = await fetch('/api/auth', {
+      const res = await fetch(getApiUrl('/api/auth'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
