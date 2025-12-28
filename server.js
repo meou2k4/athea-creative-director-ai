@@ -13,7 +13,46 @@ const app = express();
 const PORT = process.env.PORT || 3001;
 
 // Middleware - Tăng giới hạn lên 50MB để nhận được ảnh từ Frontend
-app.use(cors());
+// Cấu hình CORS để cho phép requests từ Vercel frontend và localhost
+const corsOptions = {
+  origin: function (origin, callback) {
+    // Cho phép requests không có origin (mobile apps, Postman, server-to-server, etc.)
+    if (!origin) return callback(null, true);
+    
+    // Danh sách các origins được phép
+    const allowedOrigins = [
+      'https://copy-of-athea-creative-director-ai.vercel.app',
+      'https://athea-creative-director-ai.vercel.app',
+      'http://localhost:3000',
+      'http://localhost:5173',
+      'http://127.0.0.1:3000',
+      'http://127.0.0.1:5173'
+    ];
+    
+    // Cho phép tất cả origins trong development
+    if (process.env.NODE_ENV !== 'production') {
+      return callback(null, true);
+    }
+    
+    // Trong production: cho phép localhost và tất cả Vercel domains
+    if (origin.includes('localhost') || 
+        origin.includes('127.0.0.1') || 
+        origin.includes('vercel.app') ||
+        allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      console.warn(`⚠️ CORS blocked origin: ${origin}`);
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'],
+  exposedHeaders: ['Content-Length'],
+  maxAge: 86400 // 24 hours
+};
+
+app.use(cors(corsOptions));
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
