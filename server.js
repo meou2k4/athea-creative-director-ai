@@ -35,24 +35,42 @@ const corsOptions = {
     }
     
     // Trong production: cho phép localhost và tất cả Vercel domains
+    // Tạm thời cho phép tất cả để debug, có thể giới hạn lại sau
     if (origin.includes('localhost') || 
         origin.includes('127.0.0.1') || 
         origin.includes('vercel.app') ||
+        origin.includes('onrender.com') ||
         allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
-      console.warn(`⚠️ CORS blocked origin: ${origin}`);
-      callback(new Error('Not allowed by CORS'));
+      // Tạm thời cho phép tất cả origins để debug
+      console.log(`✅ CORS allowed origin: ${origin}`);
+      callback(null, true);
+      // Sau khi test xong, có thể uncomment dòng dưới để block
+      // callback(new Error('Not allowed by CORS'));
     }
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'],
   exposedHeaders: ['Content-Length'],
-  maxAge: 86400 // 24 hours
+  maxAge: 86400, // 24 hours
+  preflightContinue: false,
+  optionsSuccessStatus: 204
 };
 
+// Áp dụng CORS middleware
 app.use(cors(corsOptions));
+
+// Xử lý preflight requests một cách rõ ràng
+app.options('*', (req, res) => {
+  res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin');
+  res.header('Access-Control-Allow-Credentials', 'true');
+  res.header('Access-Control-Max-Age', '86400');
+  res.sendStatus(204);
+});
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 

@@ -251,12 +251,18 @@ athea-creative-director-ai/
 │   └── ...
 ├── services/            # API services
 │   └── geminiService.ts # Gemini AI service
-├── api/                 # API routes (Vercel serverless)
-│   └── auth.js         # Authentication API
-├── server.js            # Express server (local dev)
-├── App.tsx              # Main application component
+├── utils/              # Utility functions
+│   └── api.ts         # API URL helper
+├── server.js           # Express server (deploy lên Render.com)
+├── App.tsx             # Main application component
 └── package.json
 ```
+
+**Lưu ý:**
+- Backend API được deploy trên **Render.com** (không phải Vercel serverless functions)
+- Frontend được deploy trên **Vercel**
+- Trong development: Frontend proxy đến `localhost:3001`
+- Trong production: Frontend gọi trực tiếp đến Render backend URL
 
 ## 📝 Scripts
 
