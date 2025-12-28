@@ -135,37 +135,61 @@ export default async function handler(req, res) {
     if (action === 'register') {
       // Validation: Kiểm tra đầy đủ thông tin
       if (!email || !password || !name) {
-        return res.status(400).json({ message: 'Vui lòng điền đầy đủ thông tin' });
+        return res.status(400).json({ 
+          success: false,
+          message: 'Vui lòng điền đầy đủ thông tin' 
+        });
       }
 
       // Validation: Email
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
       if (!emailRegex.test(email)) {
-        return res.status(400).json({ message: 'Email không hợp lệ. Vui lòng nhập đúng định dạng email.' });
+        return res.status(400).json({ 
+          success: false,
+          message: 'Email không hợp lệ. Vui lòng nhập đúng định dạng email.' 
+        });
       }
       if (email.length > 100) {
-        return res.status(400).json({ message: 'Email không được vượt quá 100 ký tự.' });
+        return res.status(400).json({ 
+          success: false,
+          message: 'Email không được vượt quá 100 ký tự.' 
+        });
       }
 
       // Validation: Password
       if (password.length < 6) {
-        return res.status(400).json({ message: 'Mật khẩu phải có ít nhất 6 ký tự.' });
+        return res.status(400).json({ 
+          success: false,
+          message: 'Mật khẩu phải có ít nhất 6 ký tự.' 
+        });
       }
       if (password.length > 50) {
-        return res.status(400).json({ message: 'Mật khẩu không được vượt quá 50 ký tự.' });
+        return res.status(400).json({ 
+          success: false,
+          message: 'Mật khẩu không được vượt quá 50 ký tự.' 
+        });
       }
 
       // Validation: Name
       const trimmedName = name.trim();
       if (trimmedName.length < 2) {
-        return res.status(400).json({ message: 'Họ tên phải có ít nhất 2 ký tự.' });
+        return res.status(400).json({ 
+          success: false,
+          message: 'Họ tên phải có ít nhất 2 ký tự.' 
+        });
       }
       if (trimmedName.length > 50) {
-        return res.status(400).json({ message: 'Họ tên không được vượt quá 50 ký tự.' });
+        return res.status(400).json({ 
+          success: false,
+          message: 'Họ tên không được vượt quá 50 ký tự.' 
+        });
       }
       const nameRegex = /^[a-zA-ZÀ-ỹ\s]+$/;
       if (!nameRegex.test(trimmedName)) {
-        return res.status(400).json({ message: 'Họ tên chỉ được chứa chữ cái và khoảng trắng.' });
+        return res.status(400).json({ 
+          success: false,
+          message: 'Họ tên chỉ được chứa chữ cái và khoảng trắng.' 
+        });
       }
 
       // Chuẩn hóa email: trim và chuyển thành chữ hoa
@@ -176,7 +200,10 @@ export default async function handler(req, res) {
       const isExist = rows.some(row => row.get('Email')?.toUpperCase() === normalizedEmail);
 
       if (isExist) {
-        return res.status(400).json({ message: 'Email này đã tồn tại trên hệ thống' });
+        return res.status(400).json({ 
+          success: false,
+          message: 'Email này đã tồn tại trên hệ thống' 
+        });
       }
 
       // Tạo ID ngẫu nhiên duy nhất
@@ -240,7 +267,10 @@ export default async function handler(req, res) {
     // --- XỬ LÝ ĐĂNG NHẬP ---
     if (action === 'login') {
       if (!email || !password) {
-        return res.status(400).json({ message: 'Thiếu email hoặc mật khẩu' });
+        return res.status(400).json({ 
+          success: false,
+          message: 'Thiếu email hoặc mật khẩu' 
+        });
       }
 
       const normalizedEmail = email.trim().toUpperCase();
@@ -273,10 +303,13 @@ export default async function handler(req, res) {
       });
     }
 
-    // --- XỬ LÝ KIỂM TRA SESSION (Mới) ---
+    // --- XỬ LÝ KIỂM TRA SESSION (verify) ---
     if (action === 'verify') {
       if (!id) {
-        return res.status(400).json({ message: 'Thiếu ID người dùng' });
+        return res.status(400).json({ 
+          success: false,
+          message: 'Thiếu ID người dùng' 
+        });
       }
 
       const rows = await sheet.getRows();
@@ -285,13 +318,19 @@ export default async function handler(req, res) {
 
       if (!user) {
         // Không tìm thấy ID trong sheet -> Tài khoản đã bị xóa
-        return res.status(404).json({ success: false, message: 'Tài khoản không tồn tại' });
+        return res.status(404).json({ 
+          success: false, 
+          message: 'Tài khoản không tồn tại' 
+        });
       }
 
       const status = user.get('Status');
       if (status !== 'APPROVED') {
         // Tài khoản bị khóa hoặc chưa duyệt
-        return res.status(403).json({ success: false, message: 'Tài khoản chưa được duyệt hoặc bị khóa' });
+        return res.status(403).json({ 
+          success: false, 
+          message: `Tài khoản ${status}. Vui lòng liên hệ Admin.` 
+        });
       }
 
       // Tài khoản hợp lệ -> Trả về thông tin mới nhất (để cập nhật nếu cần)
@@ -305,12 +344,23 @@ export default async function handler(req, res) {
       });
     }
 
-    return res.status(400).json({ message: 'Hành động không hợp lệ' });
+    // Nếu không match action nào
+    return res.status(400).json({ 
+      success: false,
+      message: 'Hành động không hợp lệ. Các hành động hợp lệ: register, login, verify' 
+    });
 
   } catch (error) {
     console.error('❌ Server Error:', error.message);
+    console.error('❌ Stack:', error.stack);
+    
     if (!res.headersSent) {
-      return res.status(500).json({ message: 'Lỗi hệ thống', error: error.message });
+      // Đảm bảo response format nhất quán
+      return res.status(500).json({ 
+        success: false,
+        message: 'Lỗi hệ thống', 
+        error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error'
+      });
     }
   }
 }
