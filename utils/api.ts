@@ -1,6 +1,6 @@
 // API Base URL configuration
 // In development: uses Vite proxy (localhost:3001)
-// In production: uses Render backend URL
+// In production: uses Google Cloud Run backend URL (must set VITE_API_BASE_URL)
 
 const getApiBaseUrl = (): string => {
   // Check if we're in development mode
@@ -9,9 +9,17 @@ const getApiBaseUrl = (): string => {
     return '';
   }
   
-  // In production, use Render backend URL
-  // Can be overridden by VITE_API_BASE_URL env variable
-  return import.meta.env.VITE_API_BASE_URL || 'https://athea-creative-director-ai.onrender.com';
+  // In production: MUST set VITE_API_BASE_URL environment variable
+  // Set this in Vercel dashboard: Settings → Environment Variables
+  // Example: https://athea-creative-director-ai-782321158530.europe-west1.run.app
+  const apiUrl = import.meta.env.VITE_API_BASE_URL;
+  
+  if (!apiUrl) {
+    console.error('❌ VITE_API_BASE_URL is not set! Please configure it in Vercel environment variables.');
+    throw new Error('Backend API URL is not configured. Please set VITE_API_BASE_URL environment variable.');
+  }
+  
+  return apiUrl;
 };
 
 export const API_BASE_URL = getApiBaseUrl();

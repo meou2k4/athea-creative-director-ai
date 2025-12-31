@@ -34,12 +34,11 @@ const corsOptions = {
       return callback(null, true);
     }
     
-    // Trong production: cho phép localhost và tất cả Vercel domains
-    // Tạm thời cho phép tất cả để debug, có thể giới hạn lại sau
+    // Trong production: cho phép localhost, Vercel và Cloud Run domains
     if (origin.includes('localhost') || 
         origin.includes('127.0.0.1') || 
         origin.includes('vercel.app') ||
-        origin.includes('onrender.com') ||
+        origin.includes('.run.app') || // Google Cloud Run domains
         allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
