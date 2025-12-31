@@ -7,7 +7,6 @@
     "dev": "vite",
     "dev:server": "node server.js",
     "dev:all": "concurrently \"npm run dev:server\" \"npm run dev\"",
-    "test:server": "node test-server.js",
     "build": "vite build",
     "preview": "vite preview",
     "start": "node server.js"
