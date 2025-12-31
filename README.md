@@ -16,18 +16,19 @@ ATHEA là công cụ AI Giám Đốc Sáng Tạo chuyên nghiệp, hỗ trợ t�
 - **Custom Description**: Mô tả chi tiết yêu cầu bổ sung
 - **Model Origin**: Chọn quốc tịch người mẫu (VN, KR, US)
 - **Lighting Lock**: Khóa ánh sáng để đồng bộ tone màu
+- **Reset Function**: Reset toàn bộ data để bắt đầu concept mới
 
 ### 📚 Collection - Quản lý Bộ Sưu Tập
 - **Auto-sync với Google Drive**: Tự động lưu và đồng bộ concept lên Google Drive
 - **Edit & Update**: Chỉnh sửa concept đã lưu, cập nhật prompt và regenerate ảnh
 - **Delete Concept**: Xóa concept và tất cả ảnh liên quan
-- **Unsaved Changes Warning**: Cảnh báo khi có dữ liệu chưa lưu trước khi chuyển trang
+- **Data Persistence**: Data Studio được giữ nguyên khi chuyển sang Collection tab
 
 ### 🔐 Bảo mật & Quản lý
 - **User Authentication**: Đăng ký/đăng nhập với Google Sheets
 - **Status Management**: Quản lý trạng thái user (PENDING/APPROVED) qua Google Sheet
 - **Auto Session Check**: Tự động kiểm tra và xác thực user khi load lại trang
-- **Data Protection**: Cảnh báo dữ liệu chưa lưu khi chuyển tab hoặc đóng trang
+- **Timestamp Tracking**: Tự động cập nhật thời gian đăng nhập và hoạt động (múi giờ Việt Nam)
 
 ## 🚀 Demo
 
@@ -35,8 +36,8 @@ Xem demo trực tiếp: https://copy-of-athea-creative-director-ai.vercel.app/
 
 ## 📋 Yêu cầu hệ thống
 
-- **Node.js** (v18 trở lên)
-- **Google Account** (để tạo Service Account và Google Drive)
+- **Node.js** (v20.0.0 trở lên) - **Bắt buộc**
+- **Google Account** (để tạo OAuth2 credentials và Google Drive)
 - **Gemini API Key** (từ Google AI Studio)
 
 ## 🛠️ Cài đặt
@@ -62,59 +63,60 @@ Tạo file `.env` trong thư mục gốc:
 # Gemini API Key (Bắt buộc)
 GEMINI_API_KEY=your_gemini_api_key_here
 
-# Gmail Configuration (Để gửi email thông báo khi có người đăng ký)
-GMAIL_USER=your_email@gmail.com
-GMAIL_APP_PASSWORD=your_16_char_app_password
-
-# Google Sheets Configuration (Bắt buộc)
-GOOGLE_SHEET_ID=your_google_sheet_id_here
-GOOGLE_SERVICE_ACCOUNT_EMAIL=your_service_account_email@project.iam.gserviceaccount.com
-GOOGLE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\nYour private key here\n-----END PRIVATE KEY-----\n"
-
-# Google Drive Configuration (Bắt buộc - dùng cùng Service Account)
-# Service Account cần có quyền truy cập Google Drive
-GOOGLE_DRIVE_ROOT_FOLDER_ID=your_drive_folder_id_here
+# Google OAuth2 Credentials (Bắt buộc)
 GOOGLE_CLIENT_ID=your_oauth2_client_id
 GOOGLE_CLIENT_SECRET=your_oauth2_client_secret
 GOOGLE_REFRESH_TOKEN=your_oauth2_refresh_token
 
-# API Configuration
-# Backend URL (cho production - Render.com)
-VITE_API_BASE_URL=https://athea-creative-director-ai.onrender.com
+# Google Drive Configuration (Bắt buộc)
+GOOGLE_DRIVE_ROOT_FOLDER_ID=your_drive_folder_id
 
-# Server Port (Tùy chọn, mặc định: 3001) - chỉ dùng cho local development
+# Google Sheets Configuration (Bắt buộc)
+GOOGLE_SHEET_ID=your_google_sheet_id
+
+# Gmail Configuration (Tùy chọn - để gửi email thông báo)
+GMAIL_USER=your_email@gmail.com
+GMAIL_APP_PASSWORD=your_16_char_app_password
+
+# Server Port (Tùy chọn, mặc định: 3001)
 PORT=3001
 ```
 
 **Hướng dẫn lấy thông tin:**
 
 - **GEMINI_API_KEY**: Lấy từ [Google AI Studio](https://makersuite.google.com/app/apikey)
+- **GOOGLE_OAUTH2_CREDENTIALS**: 
+  1. Vào [Google Cloud Console](https://console.cloud.google.com/)
+  2. Tạo OAuth 2.0 Client ID
+  3. Cấu hình OAuth consent screen
+  4. Lấy Client ID, Client Secret
+  5. Sử dụng [OAuth Playground](https://developers.google.com/oauthplayground/) để lấy Refresh Token
+- **GOOGLE_DRIVE_ROOT_FOLDER_ID**: 
+  1. Tạo thư mục trên Google Drive
+  2. Lấy ID từ URL: `https://drive.google.com/drive/folders/{FOLDER_ID}`
+  3. Chia sẻ thư mục với OAuth2 account (quyền Editor)
+- **GOOGLE_SHEET_ID**: Lấy từ URL: `https://docs.google.com/spreadsheets/d/{SHEET_ID}/edit`
 - **GMAIL_APP_PASSWORD**: 
   1. Vào Google Account → Security → 2-Step Verification
   2. Tạo App Password (16 ký tự)
-- **GOOGLE_SHEET_ID**: Lấy từ URL: `https://docs.google.com/spreadsheets/d/{SHEET_ID}/edit`
-- **GOOGLE_SERVICE_ACCOUNT**: 
-  1. Tạo Service Account tại [Google Cloud Console](https://console.cloud.google.com/)
-  2. Tải JSON key file
-  3. Copy `client_email` và `private_key` vào `.env`
-  4. Chia sẻ Google Sheet và Google Drive với Service Account email (quyền Editor)
 
 ### 4. Tạo Google Sheet
 
 Tạo một Google Sheet với các cột sau (dòng đầu tiên là header):
 
-| Email | Password | Name | Status | CreatedAt |
-|-------|----------|------|--------|-----------|
-| user@example.com | password123 | User Name | APPROVED | 2024-01-01 |
+| ID | Email | Password | Name | Status | CreatedAt | LastLoginAt | LastActiveAt |
+|----|-------|----------|------|--------|-----------|-------------|--------------|
+| ABC123 | user@example.com | password123 | User Name | APPROVED | 15/01/2024-14:30 | 15/01/2024-15:00 | 15/01/2024-15:00 |
 
 **Lưu ý:**
 - `Status` chỉ nhận giá trị: `PENDING` hoặc `APPROVED`
-- Chia sẻ Sheet với Service Account Email (quyền Editor)
+- `CreatedAt`, `LastLoginAt`, `LastActiveAt` sẽ tự động được cập nhật (format: `DD/MM/YYYY-HH:mm`, múi giờ Việt Nam)
+- Chia sẻ Sheet với OAuth2 account (quyền Editor)
 
 ### 5. Cấu hình Google Drive
 
 1. Tạo một thư mục trên Google Drive để lưu trữ concept
-2. Chia sẻ thư mục với Service Account email (quyền Editor)
+2. Chia sẻ thư mục với OAuth2 account (quyền Editor)
 3. Hệ thống sẽ tự động tạo thư mục cho từng user khi họ lưu concept đầu tiên
 
 ## 🚀 Chạy ứng dụng
@@ -139,28 +141,60 @@ npm run dev
 
 Sau đó mở trình duyệt tại: `http://localhost:3000`
 
-### 6. Cấu hình Backend trên Render.com (Production)
+## 🌐 Deploy Production
 
-Nếu bạn muốn deploy backend lên Render.com:
+### Kiến trúc Deploy
 
-1. **Tạo Web Service trên Render:**
-   - Vào [Render Dashboard](https://dashboard.render.com/)
-   - Tạo Web Service mới
-   - Connect repository của bạn
-   - Chọn `server.js` làm Start Command: `node server.js`
+- **Backend**: Deploy lên **Google Cloud Run** (Node.js server)
+- **Frontend**: Deploy lên **Vercel** (React static files)
 
-2. **Cấu hình Environment Variables trên Render:**
-   - Thêm tất cả các biến môi trường từ `.env` vào Render Dashboard
-   - Đảm bảo `PORT` được set (Render tự động set, nhưng có thể override)
+### Deploy Backend lên Google Cloud Run
 
-3. **Cấu hình Frontend (Vercel) để kết nối với Render:**
-   - Thêm biến môi trường `VITE_API_BASE_URL` trong Vercel Dashboard
-   - Set giá trị: `https://your-render-app.onrender.com`
-   - Ví dụ: `https://athea-creative-director-ai.onrender.com`
+1. **Chuẩn bị code:**
+   - ✅ Server lắng nghe đúng cổng: `process.env.PORT`
+   - ✅ Server bind đúng host: `0.0.0.0`
+   - ✅ Có file `package.json` với script `"start": "node server.js"`
+
+2. **Deploy qua Google Cloud Console:**
+   - Vào [Google Cloud Console](https://console.cloud.google.com/)
+   - Chọn **Cloud Run** → **Create Service**
+   - Upload code hoặc connect GitHub repository
+   - Cấu hình:
+     - **Container port**: `8080` (hoặc port mà Google cấp)
+     - **Environment variables**: Thêm tất cả biến môi trường từ `.env`
+
+3. **Lấy Backend URL:**
+   - Sau khi deploy thành công, bạn sẽ nhận được URL dạng:
+     ```
+     https://athea-backend-xxxxx-xx.a.run.app
+     ```
+   - Lưu lại URL này để cấu hình Frontend
+
+### Deploy Frontend lên Vercel
+
+1. **Cấu hình Environment Variable:**
+   - Vào [Vercel Dashboard](https://vercel.com/dashboard)
+   - Chọn project → **Settings** → **Environment Variables**
+   - Thêm biến:
+     - **Name**: `VITE_API_BASE_URL`
+     - **Value**: `https://your-cloud-run-backend-url.run.app`
+     - **Environment**: Production, Preview, Development
+
+2. **Deploy:**
+   - Connect GitHub repository
+   - Vercel sẽ tự động build và deploy
+   - Hoặc dùng CLI:
+     ```bash
+     npm install -g vercel
+     vercel --prod
+     ```
 
 **Lưu ý:**
 - Trong **development**: Frontend tự động proxy đến `localhost:3001` (không cần set `VITE_API_BASE_URL`)
-- Trong **production**: Frontend sẽ gọi trực tiếp đến Render backend URL
+- Trong **production**: Frontend sẽ gọi trực tiếp đến Google Cloud Run backend URL
+- Biến `VITE_API_BASE_URL` là **BẮT BUỘC** trong production
+
+Xem chi tiết trong file `DEPLOY_INSTRUCTIONS.md`
 
 ## 📖 Hướng dẫn sử dụng
 
@@ -169,7 +203,8 @@ Nếu bạn muốn deploy backend lên Render.com:
 1. **Đăng ký tài khoản mới:**
    - Nhập Email, Password, và Họ tên
    - Hệ thống sẽ lưu vào Google Sheet với status `PENDING`
-   - Admin sẽ nhận email thông báo
+   - `CreatedAt` sẽ tự động được cập nhật (múi giờ Việt Nam)
+   - Admin sẽ nhận email thông báo (nếu đã cấu hình Gmail)
 
 2. **Duyệt tài khoản:**
    - Vào Google Sheet
@@ -177,6 +212,7 @@ Nếu bạn muốn deploy backend lên Render.com:
 
 3. **Đăng nhập:**
    - Dùng email/password đã được approve
+   - `LastLoginAt` và `LastActiveAt` sẽ tự động được cập nhật
    - Hệ thống tự động kiểm tra status khi load lại trang
 
 ### Sử dụng Studio
@@ -202,6 +238,10 @@ Nếu bạn muốn deploy backend lên Render.com:
    - AI sẽ tạo 3 concepts, mỗi concept có 5 poses
    - Mỗi pose có thể generate ảnh, refine, hoặc regenerate prompt
 
+6. **Reset:**
+   - Click nút "Reset" để xóa toàn bộ data và bắt đầu concept mới
+   - Data sẽ được giữ nguyên khi chuyển sang tab Collection
+
 ### Quản lý Collection
 
 1. **Lưu Concept:**
@@ -219,12 +259,6 @@ Nếu bạn muốn deploy backend lên Render.com:
    - Click nút "Xóa" trên concept card
    - Xác nhận xóa
    - Concept và tất cả ảnh liên quan sẽ bị xóa khỏi Google Drive
-
-### Cảnh báo Dữ liệu chưa lưu
-
-- Hệ thống tự động phát hiện dữ liệu chưa lưu ở cả **Studio** và **Collection**
-- Khi chuyển tab hoặc đóng trang, sẽ có cảnh báo nếu có dữ liệu chưa lưu
-- Có thể chọn "Bỏ qua và tiếp tục" hoặc quay lại để lưu
 
 ## 🎨 Preset Scenes
 
@@ -245,32 +279,40 @@ Hệ thống có 15+ preset scenes được thiết kế sẵn:
 
 ```
 athea-creative-director-ai/
-├── components/          # React components
-│   ├── Login.tsx       # Màn hình đăng nhập/đăng ký
-│   ├── ConceptCard.tsx # Component hiển thị concept
-│   └── ...
-├── services/            # API services
-│   └── geminiService.ts # Gemini AI service
-├── utils/              # Utility functions
-│   └── api.ts         # API URL helper
-├── server.js           # Express server (deploy lên Render.com)
-├── App.tsx             # Main application component
-└── package.json
+├── components/              # React components
+│   ├── Login.tsx           # Màn hình đăng nhập/đăng ký
+│   ├── ConceptCard.tsx     # Component hiển thị concept
+│   ├── ImageUploader.tsx   # Component upload ảnh
+│   ├── AnalysisDisplay.tsx
+│   ├── Button.tsx
+│   └── RefineImageModal.tsx
+├── services/               # API services
+│   └── geminiService.ts    # Gemini AI service
+├── utils/                  # Utility functions
+│   └── api.ts             # API URL helper
+├── server.js              # Express backend server
+├── App.tsx                # Main application component
+├── types.ts               # TypeScript type definitions
+├── package.json
+├── vite.config.ts         # Vite configuration
+├── vercel.json            # Vercel configuration
+└── tsconfig.json          # TypeScript configuration
 ```
 
 **Lưu ý:**
-- Backend API được deploy trên **Render.com** (không phải Vercel serverless functions)
+- Backend API được deploy trên **Google Cloud Run**
 - Frontend được deploy trên **Vercel**
 - Trong development: Frontend proxy đến `localhost:3001`
-- Trong production: Frontend gọi trực tiếp đến Render backend URL
+- Trong production: Frontend gọi trực tiếp đến Google Cloud Run backend URL
 
 ## 📝 Scripts
 
-- `npm run dev` - Chạy Vite dev server
-- `npm run dev:server` - Chạy Express API server
-- `npm run dev:all` - Chạy cả server và client
-- `npm run build` - Build production
+- `npm run dev` - Chạy Vite dev server (Frontend)
+- `npm run dev:server` - Chạy Express API server (Backend)
+- `npm run dev:all` - Chạy cả server và client cùng lúc
+- `npm run build` - Build production (Frontend)
 - `npm run preview` - Preview production build
+- `npm start` - Chạy production server (Backend)
 
 ## 🔒 Bảo mật
 
@@ -278,7 +320,8 @@ athea-creative-director-ai/
 - Status management (PENDING/APPROVED)
 - Auto session verification khi load lại trang
 - Dữ liệu lưu trữ an toàn trên Google Drive
-- Cảnh báo dữ liệu chưa lưu
+- Timestamp tracking (múi giờ Việt Nam)
+- CORS được cấu hình cho production
 
 ## 🐛 Troubleshooting
 
@@ -299,14 +342,32 @@ lsof -ti:3001 | xargs kill -9
 
 ### Lỗi kết nối Google Drive
 
-- Kiểm tra Service Account có quyền Editor trên Drive folder
+- Kiểm tra OAuth2 account có quyền Editor trên Drive folder
 - Đảm bảo Google Drive API đã được enable trong Google Cloud Console
+- Kiểm tra `GOOGLE_REFRESH_TOKEN` có hợp lệ không
 
 ### Lỗi authentication
 
 - Kiểm tra Google Sheet có đúng format
-- Đảm bảo Service Account có quyền Editor trên Sheet
+- Đảm bảo OAuth2 account có quyền Editor trên Sheet
 - Kiểm tra các biến môi trường trong `.env`
+- Kiểm tra `GOOGLE_REFRESH_TOKEN` có hợp lệ không
+
+### Lỗi Node.js version
+
+Nếu gặp warning về Node.js version:
+- Cài đặt Node.js v20.0.0 trở lên
+- Sử dụng `nvm` để quản lý version:
+  ```bash
+  nvm install 20
+  nvm use 20
+  ```
+
+### Frontend không kết nối được Backend
+
+- Kiểm tra `VITE_API_BASE_URL` đã set đúng trên Vercel chưa
+- Kiểm tra backend có đang chạy không (test endpoint `/api/test`)
+- Kiểm tra CORS configuration trong `server.js`
 
 ## 📄 License
 

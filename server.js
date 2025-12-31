@@ -5,21 +5,17 @@ import { JWT } from 'google-auth-library';
 import nodemailer from 'nodemailer';
 import dotenv from 'dotenv';
 import { google } from 'googleapis';
-import { Readable } from 'stream'; // Thêm thư viện xử lý stream ảnh
+import { Readable } from 'stream';
 
 dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-// Middleware - Tăng giới hạn lên 50MB để nhận được ảnh từ Frontend
-// Cấu hình CORS để cho phép requests từ Vercel frontend và localhost
 const corsOptions = {
   origin: function (origin, callback) {
-    // Cho phép requests không có origin (mobile apps, Postman, server-to-server, etc.)
     if (!origin) return callback(null, true);
     
-    // Danh sách các origins được phép
     const allowedOrigins = [
       'https://copy-of-athea-creative-director-ai.vercel.app',
       'https://athea-creative-director-ai.vercel.app',
@@ -29,39 +25,32 @@ const corsOptions = {
       'http://127.0.0.1:5173'
     ];
     
-    // Cho phép tất cả origins trong development
     if (process.env.NODE_ENV !== 'production') {
       return callback(null, true);
     }
     
-    // Trong production: cho phép localhost, Vercel và Cloud Run domains
     if (origin.includes('localhost') || 
         origin.includes('127.0.0.1') || 
         origin.includes('vercel.app') ||
-        origin.includes('.run.app') || // Google Cloud Run domains
+        origin.includes('.run.app') ||
         allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
-      // Tạm thời cho phép tất cả origins để debug
       console.log(`✅ CORS allowed origin: ${origin}`);
       callback(null, true);
-      // Sau khi test xong, có thể uncomment dòng dưới để block
-      // callback(new Error('Not allowed by CORS'));
     }
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'],
   exposedHeaders: ['Content-Length'],
-  maxAge: 86400, // 24 hours
+  maxAge: 86400,
   preflightContinue: false,
   optionsSuccessStatus: 204
 };
 
-// Áp dụng CORS middleware
 app.use(cors(corsOptions));
 
-// Xử lý preflight requests một cách rõ ràng
 app.options('*', (req, res) => {
   res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
   res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
@@ -73,14 +62,12 @@ app.options('*', (req, res) => {
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
-// --- 1. CẤU HÌNH OAUTH2 ---
 const oauth2Client = new google.auth.OAuth2(
   process.env.GOOGLE_CLIENT_ID,
   process.env.GOOGLE_CLIENT_SECRET,
   'https://developers.google.com/oauthplayground'
 );
 
-// Nếu có Refresh Token thì set, nếu không thì báo lỗi
 if (process.env.GOOGLE_REFRESH_TOKEN) {
   oauth2Client.setCredentials({ refresh_token: process.env.GOOGLE_REFRESH_TOKEN });
 } else {
@@ -92,17 +79,15 @@ const drive = google.drive({ version: 'v3', auth: oauth2Client });
 // --- HÀM HELPER: LƯU BASE64 THÀNH FILE DRIVE ---
 async function saveBase64AsFile(base64Str, folderId, fileName, existingFileId = null) {
   try {
-    // Kiểm tra xem có phải base64 hợp lệ không
     const matches = base64Str.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
     if (!matches || matches.length !== 3) {
-        return base64Str; // Không phải base64 (có thể là url sẵn), trả về nguyên gốc
+        return base64Str;
     }
 
     const mimeType = matches[1];
     const buffer = Buffer.from(matches[2], 'base64');
     const stream = Readable.from(buffer);
 
-    // Nếu có existingFileId, update file cũ thay vì tạo mới
     if (existingFileId) {
       await drive.files.update({
         fileId: existingFileId,
@@ -110,9 +95,8 @@ async function saveBase64AsFile(base64Str, folderId, fileName, existingFileId = 
         fields: 'id'
       });
       console.log(`✅ Đã cập nhật ảnh: ${fileName} (${existingFileId})`);
-      return `DRIVE_FILE:${existingFileId}`; // Giữ nguyên ID
+      return `DRIVE_FILE:${existingFileId}`;
     } else {
-      // Tạo file mới
       const fileMetadata = {
         name: fileName,
         parents: [folderId]
@@ -129,7 +113,7 @@ async function saveBase64AsFile(base64Str, folderId, fileName, existingFileId = 
       });
       
       console.log(`✅ Đã tách ảnh lưu thành file: ${fileName} (${file.data.id})`);
-      return `DRIVE_FILE:${file.data.id}`; // Trả về ID đánh dấu
+      return `DRIVE_FILE:${file.data.id}`;
     }
   } catch (error) {
     console.error("Lỗi lưu ảnh:", error.message);
@@ -145,7 +129,6 @@ async function restoreImageFromDrive(strValue) {
     
     const fileId = strValue.replace('DRIVE_FILE:', '');
     try {
-        // Tải ảnh từ Drive và chuyển về base64 để frontend hiển thị
         const [meta, response] = await Promise.all([
             drive.files.get({ fileId, fields: 'mimeType' }),
             drive.files.get({ fileId, alt: 'media' }, { responseType: 'arraybuffer' })
@@ -156,7 +139,7 @@ async function restoreImageFromDrive(strValue) {
         return `data:${mimeType};base64,${base64}`;
     } catch (e) {
         console.error(`Không thể tải ảnh ${fileId}:`, e.message);
-        return null; // Ảnh lỗi hoặc đã bị xóa
+        return null;
     }
 }
 
@@ -174,12 +157,11 @@ app.get('/api/image/:fileId', async (req, res) => {
             { responseType: 'stream' }
         );
         
-        // Lấy mimeType để set header đúng
         const meta = await drive.files.get({ fileId, fields: 'mimeType' });
         const mimeType = meta.data.mimeType || 'image/png';
         
         res.setHeader('Content-Type', mimeType);
-        res.setHeader('Cache-Control', 'public, max-age=31536000'); // Cache 1 năm
+        res.setHeader('Cache-Control', 'public, max-age=31536000');
         
         response.data.pipe(res);
     } catch (error) {
@@ -208,12 +190,10 @@ app.post('/api/save-image', async (req, res) => {
         const userFolderId = await getUserFolderId(userId);
         const finalFileName = fileName || `generated_${Date.now()}.png`;
         
-        // Lưu ảnh vào Drive
         console.log(`💾 Đang lưu file: ${finalFileName}`);
         const driveFileId = await saveBase64AsFile(base64Image, userFolderId, finalFileName);
         
         if (driveFileId && driveFileId.startsWith('DRIVE_FILE:')) {
-            // Trả về URL để frontend hiển thị
             const fileId = driveFileId.replace('DRIVE_FILE:', '');
             const imageUrl = `/api/image/${fileId}`;
             console.log(`✅ Đã lưu ảnh thành công: ${imageUrl}`);
@@ -253,41 +233,33 @@ app.post('/api/collection', async (req, res) => {
         
         const userFolderId = await getUserFolderId(userId);
 
-        // --- XỬ LÝ LƯU (SAVE) ---
         if (action === 'save') {
             console.log("📥 Đang xử lý lưu Concept...");
             
-            // Kiểm tra xem concept đã tồn tại chưa (tìm theo conceptId trong tên file)
-            // Nếu không tìm thấy, thử tìm theo concept_name để tránh tạo duplicate
             let existingFileList = await drive.files.list({ 
                 q: `'${userFolderId}' in parents and mimeType='application/json' and name='concept_${conceptId}.json' and trashed=false`, 
                 fields: 'files(id)' 
             });
             
-            // Nếu không tìm thấy theo ID, thử tìm theo concept_name để tránh duplicate
             if (!existingFileList.data.files || existingFileList.data.files.length === 0) {
                 const conceptName = conceptData.concept_name_vn || conceptData.concept_name_en || '';
                 if (conceptName) {
-                    // Tìm tất cả concept files và đọc để so sánh tên
                     const allConcepts = await drive.files.list({ 
                         q: `'${userFolderId}' in parents and mimeType='application/json' and trashed=false`, 
                         fields: 'files(id, name)' 
                     });
                     
-                    // Đọc từng file để so sánh concept_name
                     for (const file of allConcepts.data.files || []) {
                         try {
                             const content = await drive.files.get({ fileId: file.id, alt: 'media' });
                             const data = typeof content.data === 'string' ? JSON.parse(content.data) : content.data;
                             if ((data.concept_name_vn === conceptData.concept_name_vn && data.concept_name_vn) ||
                                 (data.concept_name_en === conceptData.concept_name_en && data.concept_name_en)) {
-                                // Tìm thấy concept cùng tên, dùng ID của file đó
                                 existingFileList = { data: { files: [{ id: file.id }] } };
                                 console.log(`🔄 Tìm thấy concept cùng tên, sẽ update: ${file.name}`);
                                 break;
                             }
                         } catch (e) {
-                            // Bỏ qua file lỗi
                         }
                     }
                 }
@@ -298,7 +270,6 @@ app.post('/api/collection', async (req, res) => {
             
             if (isUpdate) {
                 console.log("🔄 Concept đã tồn tại, đang cập nhật...");
-                // Đọc dữ liệu cũ để giữ lại ảnh đã có
                 try {
                     const existingFileId = existingFileList.data.files[0].id;
                     const existingContent = await drive.files.get({ fileId: existingFileId, alt: 'media' });
@@ -308,78 +279,60 @@ app.post('/api/collection', async (req, res) => {
                 }
             }
             
-            const cleanData = { ...conceptData }; // Copy ra để sửa đổi
+            const cleanData = { ...conceptData };
             
-            // 1. Tách ảnh kết quả từ poses (Generated Images)
-            // Chỉ lưu ảnh mới (base64), giữ nguyên ảnh đã có (DRIVE_FILE:)
             if (cleanData.poses && Array.isArray(cleanData.poses)) {
                 for (let poseIdx = 0; poseIdx < cleanData.poses.length; poseIdx++) {
                     const pose = cleanData.poses[poseIdx];
                     if (pose.generated_image) {
-                        // Kiểm tra xem có phải base64 không
                         const isBase64 = typeof pose.generated_image === 'string' && 
                                         (pose.generated_image.startsWith('data:') || pose.generated_image.length > 1000);
                         
-                        // Nếu đang update và ảnh cũ đã là DRIVE_FILE:
                         if (isUpdate && existingData?.poses?.[poseIdx]?.generated_image?.startsWith('DRIVE_FILE:')) {
-                            // Chỉ lưu ảnh mới nếu là base64 (ảnh đã thay đổi)
-                            // Nếu không phải base64, giữ nguyên ảnh cũ (không thay đổi)
                             if (isBase64) {
-                                // Ảnh mới, update file ảnh cũ thay vì tạo mới
                                 const existingFileId = existingData.poses[poseIdx].generated_image.replace('DRIVE_FILE:', '');
                                 pose.generated_image = await saveBase64AsFile(
                                     pose.generated_image, 
                                     userFolderId, 
                                     `pose_${conceptId}_${poseIdx + 1}.png`,
-                                    existingFileId // Truyền fileId cũ để update
+                                    existingFileId
                                 );
                             } else {
-                                // Giữ nguyên ảnh cũ (đã là DRIVE_FILE:)
                                 pose.generated_image = existingData.poses[poseIdx].generated_image;
                             }
                         } else if (isBase64) {
-                            // Lưu ảnh mới (không có ảnh cũ hoặc concept mới)
                             pose.generated_image = await saveBase64AsFile(
                                 pose.generated_image, 
                                 userFolderId, 
                                 `pose_${conceptId}_${poseIdx + 1}.png`
                             );
                         }
-                        // Nếu đã là DRIVE_FILE: hoặc URL thì giữ nguyên
                     }
                 }
             }
 
-            // 2. Tách ảnh gốc (Product Images)
-            // Chỉ lưu ảnh mới, giữ nguyên ảnh đã có
             if (cleanData.input && cleanData.input.productImages) {
                 const newProducts = [];
                 let idx = 0;
                 for (const img of cleanData.input.productImages) {
                     idx++;
                     if (img.data) {
-                        // Kiểm tra xem có phải base64 không
                         const isBase64 = typeof img.data === 'string' && 
                                         (img.data.startsWith('data:') || img.data.length > 1000);
                         
-                        // Nếu đang update và ảnh cũ đã là DRIVE_FILE:
                         if (isUpdate && existingData?.input?.productImages?.[idx - 1]?.data?.startsWith('DRIVE_FILE:')) {
-                            // Chỉ lưu ảnh mới nếu là base64 (ảnh đã thay đổi)
                             if (isBase64) {
-                                // Update file ảnh cũ thay vì tạo mới
                                 const existingFileId = existingData.input.productImages[idx - 1].data.replace('DRIVE_FILE:', '');
                                 const newId = await saveBase64AsFile(img.data, userFolderId, `input_${conceptId}_${idx}.png`, existingFileId);
                                 newProducts.push({ ...img, data: newId });
                             } else {
-                                // Giữ nguyên ảnh cũ (đã là DRIVE_FILE:)
                                 newProducts.push(existingData.input.productImages[idx - 1]);
                             }
                         } else if (isBase64) {
-                            // Lưu ảnh mới (không có ảnh cũ hoặc concept mới)
                             const newId = await saveBase64AsFile(img.data, userFolderId, `input_${conceptId}_${idx}.png`);
                             newProducts.push({ ...img, data: newId }); 
                         } else {
-                            newProducts.push(img); // Đã là DRIVE_FILE: hoặc URL
+                            newProducts.push(img);
                         }
                     } else {
                         newProducts.push(img);
@@ -388,8 +341,6 @@ app.post('/api/collection', async (req, res) => {
                 cleanData.input.productImages = newProducts;
             }
 
-            // 3. Tách Face Ref & Fabric Ref (Nếu có)
-            // Chỉ lưu ảnh mới, giữ nguyên ảnh đã có
             if (cleanData.input?.faceReference?.data) {
                 const isBase64 = typeof cleanData.input.faceReference.data === 'string' && 
                                 (cleanData.input.faceReference.data.startsWith('data:') || cleanData.input.faceReference.data.length > 1000);
@@ -398,7 +349,6 @@ app.post('/api/collection', async (req, res) => {
                     if (!isBase64) {
                         cleanData.input.faceReference.data = existingData.input.faceReference.data;
                     } else {
-                        // Update file ảnh cũ thay vì tạo mới
                         const existingFileId = existingData.input.faceReference.data.replace('DRIVE_FILE:', '');
                         cleanData.input.faceReference.data = await saveBase64AsFile(cleanData.input.faceReference.data, userFolderId, `face_${conceptId}.png`, existingFileId);
                     }
@@ -415,7 +365,6 @@ app.post('/api/collection', async (req, res) => {
                     if (!isBase64) {
                         cleanData.input.fabricReference.data = existingData.input.fabricReference.data;
                     } else {
-                        // Update file ảnh cũ thay vì tạo mới
                         const existingFileId = existingData.input.fabricReference.data.replace('DRIVE_FILE:', '');
                         cleanData.input.fabricReference.data = await saveBase64AsFile(cleanData.input.fabricReference.data, userFolderId, `fabric_${conceptId}.png`, existingFileId);
                     }
@@ -424,12 +373,9 @@ app.post('/api/collection', async (req, res) => {
                 }
             }
 
-            // 4. Lưu hoặc cập nhật file JSON
             if (isUpdate && existingFileList.data.files.length > 0) {
-                // Update file JSON đã tồn tại
                 const existingFileId = existingFileList.data.files[0].id;
                 
-                // Update cả nội dung và tên file (đảm bảo tên file khớp với conceptId mới)
                 await drive.files.update({
                     fileId: existingFileId,
                     resource: { name: `concept_${conceptId}.json` },
@@ -438,7 +384,6 @@ app.post('/api/collection', async (req, res) => {
                 console.log("✅ Cập nhật thành công!");
                 return res.json({ success: true, message: 'Đã cập nhật', isUpdate: true });
             } else {
-                // Tạo file JSON mới
                 await drive.files.create({
                     resource: { name: `concept_${conceptId || Date.now()}.json`, parents: [userFolderId] },
                     media: { mimeType: 'application/json', body: JSON.stringify(cleanData) },
@@ -449,7 +394,6 @@ app.post('/api/collection', async (req, res) => {
             }
         }
         
-        // --- XỬ LÝ TẢI (LOAD) ---
         if (action === 'load') {
             const list = await drive.files.list({ 
                 q: `'${userFolderId}' in parents and mimeType='application/json' and trashed=false`, 
@@ -460,7 +404,6 @@ app.post('/api/collection', async (req, res) => {
 
             console.log(`📂 Đang tải ${files.length} concepts...`);
 
-            // Tối ưu: Đọc tất cả JSON files song song
             const jsonPromises = files.map(f => 
                 drive.files.get({ fileId: f.id, alt: 'media' })
                     .then(content => ({ id: f.id, data: content.data }))
@@ -469,7 +412,6 @@ app.post('/api/collection', async (req, res) => {
             
             const jsonResults = await Promise.all(jsonPromises);
             
-            // Parse JSON và thu thập tất cả ảnh cần tải
             const imagePromises = [];
             const conceptsData = [];
             
@@ -488,10 +430,8 @@ app.post('/api/collection', async (req, res) => {
                 }
                 
                 if (typeof data === 'object') {
-                    // Thu thập tất cả ảnh cần tải
                     const imageTasks = [];
                     
-                    // Xử lý ảnh trong poses (generated_image)
                     if (data.poses && Array.isArray(data.poses)) {
                         data.poses.forEach((pose, poseIdx) => {
                             if (pose.generated_image && typeof pose.generated_image === 'string' && pose.generated_image.startsWith('DRIVE_FILE:')) {
@@ -504,7 +444,6 @@ app.post('/api/collection', async (req, res) => {
                         imageTasks.push(restoreImageFromDrive(data.generatedImage).then(img => ({ key: 'generatedImage', value: img })));
                     }
                     
-                    // Đảm bảo input structure tồn tại
                     if (!data.input) {
                         data.input = {
                             productImages: [],
@@ -529,19 +468,16 @@ app.post('/api/collection', async (req, res) => {
                         imageTasks.push(restoreImageFromDrive(data.input.fabricReference.data).then(img => ({ key: 'fabricReference', value: img })));
                     }
                     
-                    // Lưu data và image tasks để xử lý sau
                     conceptsData.push({ data, imageTasks });
                 }
             }
             
-            // Tải tất cả ảnh song song (tất cả concepts cùng lúc)
             const totalImages = conceptsData.reduce((sum, c) => sum + c.imageTasks.length, 0);
             console.log(`🖼️ Đang tải ${totalImages} ảnh song song...`);
             const startTime = Date.now();
             
-            // Flatten tất cả image tasks và track mapping
             const allImageTasks = [];
-            const taskMapping = []; // [{ conceptIdx, taskIndex }]
+            const taskMapping = [];
             
             conceptsData.forEach((conceptItem, conceptIdx) => {
                 conceptItem.imageTasks.forEach((task, taskIndex) => {
@@ -550,11 +486,9 @@ app.post('/api/collection', async (req, res) => {
                 });
             });
             
-            // Tải tất cả ảnh cùng lúc
             if (allImageTasks.length > 0) {
                 const allResults = await Promise.all(allImageTasks);
                 
-                // Group results by concept
                 const resultsByConcept = new Map();
                 allResults.forEach((result, resultIdx) => {
                     const { conceptIdx } = taskMapping[resultIdx];
@@ -564,13 +498,11 @@ app.post('/api/collection', async (req, res) => {
                     resultsByConcept.get(conceptIdx).push(result);
                 });
                 
-                // Áp dụng ảnh vào từng concept
                 conceptsData.forEach(({ data }, conceptIdx) => {
                     if (resultsByConcept.has(conceptIdx)) {
                         const results = resultsByConcept.get(conceptIdx);
                         for (const { key, value } of results) {
                             if (key.startsWith('poses.')) {
-                                // Xử lý ảnh trong poses: poses.{poseIdx}.generated_image
                                 const parts = key.split('.');
                                 if (parts.length === 3 && parts[2] === 'generated_image') {
                                     const poseIdx = parseInt(parts[1]);
@@ -582,19 +514,16 @@ app.post('/api/collection', async (req, res) => {
                                 data.generatedImage = value;
                             } else if (key.startsWith('productImages.')) {
                                 const idx = parseInt(key.split('.')[1]);
-                                // Đảm bảo input và productImages array tồn tại
                                 if (!data.input) {
                                     data.input = {};
                                 }
                                 if (!data.input.productImages) {
                                     data.input.productImages = [];
                                 }
-                                // Đảm bảo có đủ phần tử trong array
                                 while (data.input.productImages.length <= idx) {
                                     data.input.productImages.push({ data: null, mimeType: null });
                                 }
                                 data.input.productImages[idx].data = value;
-                                // Giữ nguyên mimeType nếu có
                                 if (data.input.productImages[idx].mimeType === null && value && value.startsWith('data:')) {
                                     const mimeMatch = value.match(/^data:([^;]+)/);
                                     if (mimeMatch) {
@@ -609,7 +538,6 @@ app.post('/api/collection', async (req, res) => {
                                     data.input.faceReference = { data: null, mimeType: null };
                                 }
                                 data.input.faceReference.data = value;
-                                // Giữ nguyên mimeType nếu có
                                 if (data.input.faceReference.mimeType === null && value && value.startsWith('data:')) {
                                     const mimeMatch = value.match(/^data:([^;]+)/);
                                     if (mimeMatch) {
@@ -624,7 +552,6 @@ app.post('/api/collection', async (req, res) => {
                                     data.input.fabricReference = { data: null, mimeType: null };
                                 }
                                 data.input.fabricReference.data = value;
-                                // Giữ nguyên mimeType nếu có
                                 if (data.input.fabricReference.mimeType === null && value && value.startsWith('data:')) {
                                     const mimeMatch = value.match(/^data:([^;]+)/);
                                     if (mimeMatch) {
@@ -637,8 +564,6 @@ app.post('/api/collection', async (req, res) => {
                     concepts.push(data);
                 });
             } else {
-                // Không có ảnh nào cần tải, chỉ push data
-                // Nhưng vẫn đảm bảo input structure tồn tại
                 conceptsData.forEach(({ data }) => {
                     if (!data.input) {
                         data.input = {
@@ -672,7 +597,6 @@ app.delete('/api/collection', async (req, res) => {
         
         console.log(`🗑️ Đang xóa concept: ${conceptId} cho user: ${userId}`);
         
-        // 1. Tìm file JSON của concept
         const list = await drive.files.list({ 
             q: `'${userFolderId}' in parents and mimeType='application/json' and name='concept_${conceptId}.json' and trashed=false`, 
             fields: 'files(id)' 
@@ -686,22 +610,18 @@ app.delete('/api/collection', async (req, res) => {
         
         const jsonFileId = jsonFiles[0].id;
         
-        // 2. Đọc file JSON để lấy danh sách ảnh cần xóa
         let conceptData;
         try {
             const jsonContent = await drive.files.get({ fileId: jsonFileId, alt: 'media' });
             conceptData = typeof jsonContent.data === 'string' ? JSON.parse(jsonContent.data) : jsonContent.data;
         } catch (e) {
             console.error('Lỗi đọc file JSON:', e.message);
-            // Nếu không đọc được JSON, vẫn xóa file JSON
             await drive.files.delete({ fileId: jsonFileId });
             return res.json({ success: true, message: 'Đã xóa file JSON (không đọc được dữ liệu)' });
         }
         
-        // 3. Thu thập tất cả File ID cần xóa
-        const fileIdsToDelete = [jsonFileId]; // Bắt đầu với file JSON
+        const fileIdsToDelete = [jsonFileId];
         
-        // Xử lý ảnh trong poses
         if (conceptData.poses && Array.isArray(conceptData.poses)) {
             conceptData.poses.forEach(pose => {
                 if (pose.generated_image && typeof pose.generated_image === 'string' && pose.generated_image.startsWith('DRIVE_FILE:')) {
@@ -711,7 +631,6 @@ app.delete('/api/collection', async (req, res) => {
             });
         }
         
-        // Xử lý ảnh product images
         if (conceptData.input?.productImages) {
             conceptData.input.productImages.forEach(img => {
                 if (img.data && typeof img.data === 'string' && img.data.startsWith('DRIVE_FILE:')) {
@@ -721,19 +640,16 @@ app.delete('/api/collection', async (req, res) => {
             });
         }
         
-        // Xử lý face reference
         if (conceptData.input?.faceReference?.data && typeof conceptData.input.faceReference.data === 'string' && conceptData.input.faceReference.data.startsWith('DRIVE_FILE:')) {
             const fileId = conceptData.input.faceReference.data.replace('DRIVE_FILE:', '');
             fileIdsToDelete.push(fileId);
         }
         
-        // Xử lý fabric reference
         if (conceptData.input?.fabricReference?.data && typeof conceptData.input.fabricReference.data === 'string' && conceptData.input.fabricReference.data.startsWith('DRIVE_FILE:')) {
             const fileId = conceptData.input.fabricReference.data.replace('DRIVE_FILE:', '');
             fileIdsToDelete.push(fileId);
         }
         
-        // 4. Xóa tất cả files (JSON + ảnh)
         console.log(`🗑️ Đang xóa ${fileIdsToDelete.length} files (1 JSON + ${fileIdsToDelete.length - 1} ảnh)`);
         const deletePromises = fileIdsToDelete.map(fileId => 
             drive.files.delete({ fileId })
@@ -762,55 +678,33 @@ app.delete('/api/collection', async (req, res) => {
     }
 });
 
-// Với Sheets, ta cần Access Token từ OAuth client để đăng nhập
 const getSheetDoc = async () => {
   const accessToken = (await oauth2Client.getAccessToken()).token;
-  const doc = new GoogleSpreadsheet(process.env.GOOGLE_SHEET_ID, { token: accessToken }); // Dùng token thay vì JWT
+  const doc = new GoogleSpreadsheet(process.env.GOOGLE_SHEET_ID, { token: accessToken });
   return doc;
 };
 
-// --- API DRIVE ---
-app.post('/api/collection', async (req, res) => {
-    try {
-        const { action, userId, conceptData, conceptId } = req.body;
-        if (!userId) return res.status(400).json({ success: false, message: 'Thiếu User ID' });
-        
-        const userFolderId = await getUserFolderId(userId);
-
-        if (action === 'save') {
-            await drive.files.create({
-                resource: { name: `concept_${conceptId || Date.now()}.json`, parents: [userFolderId] },
-                media: { mimeType: 'application/json', body: JSON.stringify(conceptData) },
-                fields: 'id'
-            });
-            return res.json({ success: true, message: 'Đã lưu' });
-        }
-        
-        if (action === 'load') {
-            const list = await drive.files.list({ 
-                q: `'${userFolderId}' in parents and mimeType='application/json' and trashed=false`, 
-                fields: 'files(id)' 
-            });
-            const files = list.data.files || [];
-            const concepts = [];
-
-            for (const f of files) {
-                try {
-                    const content = await drive.files.get({ fileId: f.id, alt: 'media' });
-                    let data = content.data;
-                    if (typeof data === 'string') {
-                         try { data = JSON.parse(data); } catch(e) {}
-                    }
-                    if (typeof data === 'object') concepts.push(data);
-                } catch(e) { console.error("Lỗi đọc file:", e.message); }
-            }
-            return res.json({ success: true, concepts: concepts.reverse() });
-        }
-    } catch (error) {
-        console.error('Drive Error:', error.message);
-        res.status(500).json({ error: error.message });
-    }
-});
+const getVietnamTime = () => {
+  const now = new Date();
+  const formatter = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Asia/Ho_Chi_Minh',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false
+  });
+  
+  const parts = formatter.formatToParts(now);
+  const day = parts.find(p => p.type === 'day')?.value || '';
+  const month = parts.find(p => p.type === 'month')?.value || '';
+  const year = parts.find(p => p.type === 'year')?.value || '';
+  const hour = parts.find(p => p.type === 'hour')?.value || '';
+  const minute = parts.find(p => p.type === 'minute')?.value || '';
+  
+  return `${day}/${month}/${year}-${hour}:${minute}`;
+};
 
 // --- HÀM GỬI EMAIL THÔNG BÁO (CHẠY NGẦM) ---
 async function sendAdminNotification(name, email) {
@@ -856,7 +750,6 @@ app.post('/api/auth', async (req, res) => {
     try {
         const { action, email, password, name, id } = req.body;
         
-        // Kết nối Sheet bằng OAuth token
         const doc = await getSheetDoc();
         await doc.loadInfo();
         const sheet = doc.sheetsByIndex[0];
@@ -865,6 +758,12 @@ app.post('/api/auth', async (req, res) => {
              const rows = await sheet.getRows();
              const user = rows.find(r => r.get('ID') === id);
              if (user && user.get('Status') === 'APPROVED') {
+                 try {
+                     user.set('LastActiveAt', getVietnamTime());
+                     await user.save();
+                 } catch (err) {
+                     console.warn('Không thể cập nhật LastActiveAt (có thể cột chưa tồn tại):', err.message);
+                 }
                  return res.json({ success: true, user: { name: user.get('Name'), email: user.get('Email'), id: user.get('ID') } });
              }
              return res.status(401).json({ success: false });
@@ -875,8 +774,8 @@ app.post('/api/auth', async (req, res) => {
              const rows = await sheet.getRows();
              if (rows.some(r => r.get('Email')?.toUpperCase() === normEmail)) return res.status(400).json({ message: 'Email đã tồn tại' });
              
-             const newId = Math.random().toString(36).substr(2, 9).toUpperCase();
-             await sheet.addRow({ ID: newId, Email: normEmail, Password: password, Name: name, Status: 'PENDING', CreatedAt: new Date().toISOString() });
+            const newId = Math.random().toString(36).substr(2, 9).toUpperCase();
+            await sheet.addRow({ ID: newId, Email: normEmail, Password: password, Name: name, Status: 'PENDING', CreatedAt: getVietnamTime() });
              sendAdminNotification(name, email);
              return res.json({ success: true, message: 'Đăng ký thành công! Chờ duyệt.' });
         }
@@ -888,6 +787,15 @@ app.post('/api/auth', async (req, res) => {
              
              if (!user) return res.status(401).json({ success: false, message: 'Sai email hoặc mật khẩu' });
              if (user.get('Status') !== 'APPROVED') return res.status(403).json({ success: false, message: 'Chưa được duyệt' });
+             
+             try {
+                 const vietnamTime = getVietnamTime();
+                 user.set('LastLoginAt', vietnamTime);
+                 user.set('LastActiveAt', vietnamTime);
+                 await user.save();
+             } catch (err) {
+                 console.warn('Không thể cập nhật timestamp (có thể cột chưa tồn tại):', err.message);
+             }
              
              return res.json({ success: true, user: { id: user.get('ID'), name: user.get('Name'), email: user.get('Email') } });
         }
