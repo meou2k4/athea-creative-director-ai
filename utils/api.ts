@@ -11,7 +11,7 @@ const getApiBaseUrl = (): string => {
   
   // In production: MUST set VITE_API_BASE_URL environment variable
   // Set this in Vercel dashboard: Settings → Environment Variables
-  // Example: https://athea-creative-director-ai-782321158530.europe-west1.run.app
+  // Example: https://your-backend-service-xxxxx.run.app
   const apiUrl = import.meta.env.VITE_API_BASE_URL;
   
   if (!apiUrl) {

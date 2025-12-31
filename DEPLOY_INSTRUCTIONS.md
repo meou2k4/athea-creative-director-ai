@@ -2,7 +2,9 @@
 
 ## ✅ Backend đã deploy thành công!
 
-**Backend URL:** `https://athea-creative-director-ai-782321158530.europe-west1.run.app`
+**Backend URL:** `https://your-backend-service-xxxxx.run.app`
+
+> ⚠️ **Lưu ý bảo mật**: Thay thế URL thực tế bằng URL của bạn. Không commit URL thực tế vào Git.
 
 ---
 
@@ -14,7 +16,7 @@
 2. Chọn **Settings** → **Environment Variables**
 3. Thêm biến mới:
    - **Name**: `VITE_API_BASE_URL`
-   - **Value**: `https://athea-creative-director-ai-782321158530.europe-west1.run.app`
+   - **Value**: `https://your-backend-service-xxxxx.run.app` (thay bằng URL thực tế của bạn)
    - **Environment**: Production, Preview, Development (chọn tất cả)
 4. Click **Save**
 5. **Redeploy** project để áp dụng thay đổi
@@ -23,10 +25,10 @@
 
 ### Cách 2: Tạo file `.env.production` (Local testing)
 
-Tạo file `.env.production` trong thư mục gốc:
+Tạo file `.env.production` trong thư mục gốc (không commit vào Git):
 
 ```env
-VITE_API_BASE_URL=https://athea-creative-director-ai-782321158530.europe-west1.run.app
+VITE_API_BASE_URL=https://your-backend-service-xxxxx.run.app
 ```
 
 Sau đó build và test:
@@ -42,7 +44,7 @@ npm run preview
 ### 1. Test Backend trực tiếp
 Mở browser và truy cập:
 ```
-https://athea-creative-director-ai-782321158530.europe-west1.run.app/api/test
+https://your-backend-service-xxxxx.run.app/api/test
 ```
 
 Kết quả mong đợi:
@@ -54,11 +56,11 @@ Kết quả mong đợi:
 ```
 
 ### 2. Test từ Frontend
-1. Mở website frontend (Vercel/Netlify)
+1. Mở website frontend (Vercel)
 2. Mở **Developer Tools** (F12) → **Network** tab
 3. Thử đăng nhập hoặc thực hiện action bất kỳ
 4. Kiểm tra các API calls có gọi đúng URL backend không:
-   - ✅ Đúng: `https://athea-creative-director-ai-782321158530.europe-west1.run.app/api/...`
+   - ✅ Đúng: `https://your-backend-service-xxxxx.run.app/api/...`
    - ❌ Sai: Nếu thấy lỗi "Backend API URL is not configured" → chưa set `VITE_API_BASE_URL`
 
 ---
@@ -93,8 +95,8 @@ Nếu gặp lỗi CORS, kiểm tra:
 
 ## 📞 Thông tin Backend
 
-- **URL**: `https://athea-creative-director-ai-782321158530.europe-west1.run.app`
-- **Region**: `europe-west1`
-- **Service**: `athea-creative-director-ai`
+- **URL Format**: `https://your-service-name-xxxxx-xx.run.app`
 - **Test endpoint**: `/api/test`
+
+> 💡 **Tip**: Lưu URL backend thực tế vào file `.env.production` (local) hoặc Vercel Environment Variables (production). Không commit URL thực tế vào Git.
 
