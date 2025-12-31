@@ -783,6 +783,7 @@ const App: React.FC = () => {
   };
 
   const handleClearAll = () => {
+    // Reset tất cả state về trạng thái ban đầu
     setData(null);
     setInput({
       productImages: [],
@@ -793,6 +794,8 @@ const App: React.FC = () => {
     });
     setPreviews({ products: [], face: null, fabric: null });
     setLoading({ status: 'idle' });
+    // Reset unsaved changes flag để cho phép thao tác mới
+    setHasUnsavedStudioChanges(false);
   };
 
   // Hiển thị loading screen khi đang kiểm tra authentication
@@ -842,11 +845,8 @@ const App: React.FC = () => {
                 }
               }} className={`px-4 py-1.5 rounded-md text-xs font-bold uppercase ${activeTab === 'studio' ? 'bg-white text-black shadow-sm' : 'text-gray-500'}`}><LayoutGrid size={14} className="inline mr-2" /> Studio</button>
               <button onClick={() => {
-                if (activeTab === 'studio' && hasUnsavedStudioChanges) {
-                  handlePendingAction(() => setActiveTab('collection'), 'studio');
-                } else {
-                  setActiveTab('collection');
-                }
+                // Chuyển từ Studio sang Collection: giữ nguyên data, không cảnh báo
+                setActiveTab('collection');
               }} className={`px-4 py-1.5 rounded-md text-xs font-bold uppercase ${activeTab === 'collection' ? 'bg-white text-black shadow-sm' : 'text-gray-500'}`}><Bookmark size={14} className="inline mr-2" /> Bộ sưu tập</button>
             </nav>
             <div className="flex items-center gap-3 border-l border-gray-200 pl-4">
@@ -886,7 +886,13 @@ const App: React.FC = () => {
                       ))}
                       {input.productImages.length < 4 && (
                         <div className="aspect-square">
-                          <ImageUploader label="Thêm góc" variant="compact" onImageSelect={handleAddProductImage} onClear={() => {}} />
+                          <ImageUploader 
+                            key={`product-uploader-${input.productImages.length}`}
+                            label="Thêm góc" 
+                            variant="compact" 
+                            onImageSelect={handleAddProductImage} 
+                            onClear={() => {}} 
+                          />
                         </div>
                       )}
                     </div>

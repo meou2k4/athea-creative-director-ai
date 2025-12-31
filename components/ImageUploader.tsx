@@ -58,7 +58,13 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) processFile(e.target.files[0]);
+    if (e.target.files && e.target.files[0]) {
+      processFile(e.target.files[0]);
+      // Reset file input để cho phép chọn lại cùng file
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
   };
 
   const containerBaseClasses = "transition-all relative overflow-hidden group";
