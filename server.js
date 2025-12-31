@@ -898,7 +898,7 @@ app.post('/api/auth', async (req, res) => {
     }
 });
 
-app.listen(PORT, () => {
+app.listen(PORT, '0.0.0.0', () => {
     console.log(`🚀 Server ready on port ${PORT}`);
     console.log(`📡 API endpoints available:`);
     console.log(`   - GET  /api/test`);
