@@ -334,8 +334,8 @@ const ConceptCard: React.FC<ConceptCardProps> = ({ concept, index, userInput, on
 
     const taskQueue = [...posesToGenerate];
     
-    // CONCURRENCY = 3: Refactored for parallel execution (2-3 poses at a time)
-    const CONCURRENCY = 3; 
+    // CONCURRENCY = 1: Sequential execution to avoid rate limits
+    const CONCURRENCY = 1; 
 
     const worker = async () => {
       while (taskQueue.length > 0) {
@@ -348,6 +348,8 @@ const ConceptCard: React.FC<ConceptCardProps> = ({ concept, index, userInput, on
         try {
           // Staggered start to help avoid immediate 429 quota hits
           await new Promise(resolve => setTimeout(resolve, Math.random() * 1000));
+          // Sequential execution doesn't strictly need staggered start, but a small delay helps stability
+          // await new Promise(resolve => setTimeout(resolve, Math.random() * 1000));
           
           // Sử dụng pose_prompt từ JSON đã lưu và input (khuôn) từ JSON đã lưu
           const imageUrl = await generateFashionImage(p.pose_prompt, savedInput, {
@@ -624,6 +626,11 @@ const ConceptCard: React.FC<ConceptCardProps> = ({ concept, index, userInput, on
                                 <span className="text-[8px] font-bold text-red-500 uppercase leading-tight mb-2">{errorMsg}</span>
                                 <button onClick={(e) => { e.stopPropagation(); handleGenerateImage(idx); }} className="px-2 py-1 bg-white border border-red-200 text-red-600 rounded text-[9px] font-bold uppercase hover:bg-red-50">Thử lại</button>
                               </div>
+                            ) : (isGeneratingAll && !pose.generated_image) ? (
+                              <div className="flex flex-col items-center justify-center animate-pulse">
+                                <Loader2 size={20} className="mb-2 opacity-30" />
+                                <span className="text-[9px] font-bold uppercase text-gray-400">Đang chờ xử lý ảnh...</span>
+                              </div>
                             ) : (
                               <>
                                 <ImageIcon size={24} className="mb-2 opacity-50" />
@@ -766,3 +773,4 @@ const ConceptCard: React.FC<ConceptCardProps> = ({ concept, index, userInput, on
 
 export default ConceptCard;
 
+            
