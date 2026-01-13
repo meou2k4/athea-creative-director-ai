@@ -159,7 +159,7 @@ LƯU Ý QUAN TRỌNG: 'pose_prompt' PHẢI là một chuỗi JSON hợp lệ ch�
     parts.push({ text: promptText });
 
     const response = await ai.models.generateContent({
-      model: "gemini-1.5-flash",
+      model: "gemini-2.5-flash",
       contents: { parts },
       config: {
         systemInstruction: SYSTEM_INSTRUCTION,
@@ -293,7 +293,7 @@ YÊU CẦU ĐẶC BIỆT TỪ GIÁM ĐỐC SÁNG TẠO:
       : promptText;              // Nếu không có ảnh, chỉ gửi text
 
     const response = await ai.models.generateContent({
-      model: "gemini-1.5-flash",
+      model: "gemini-2.5-flash",
       contents: contents,
       config: {
         systemInstruction: SYSTEM_INSTRUCTION + "\nBạn là một Giám đốc Sáng tạo đầy tham vọng. Hãy phân tích kỹ các ảnh khuôn đã được gửi và tạo ra những nội dung thực sự khác biệt và đẳng cấp, phù hợp với concept và ảnh khuôn. Trả về JSON cho một pose duy nhất.",
