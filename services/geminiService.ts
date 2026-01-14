@@ -2,6 +2,30 @@
 import { GoogleGenAI, Type, Schema } from "@google/genai";
 import { FashionAIResponse, UserInput, ImageRef, Concept, Pose } from "../types";
 
+/**
+ * =========================
+ * MASTER PHOTO PROFILE (GLOBAL)
+ * =========================
+ */
+const MASTER_PROFILE = `
+MASTER LIGHTING / COLOR / RENDERING PROFILE:
+- Natural daylight only. Soft morning/afternoon (golden hour). No harsh midday sun.
+- Side lighting (45-degree), very soft diffused shadows.
+- Ambient fill light from environment reflections.
+- Large aperture look (f/1.8–f/2.8), shallow depth of field, realistic bokeh.
+- Warm-neutral color grade. Clean whites. Realistic skin texture.
+- Photorealistic high-end fashion editorial quality.
+`;
+
+const IDENTITY_LOCK = `
+STRICT IDENTITY & OUTFIT LOCK:
+- Keep the SAME model face features and body proportions.
+- Keep the EXACT SAME outfit design, fabric, color, and texture as provided in product images.
+- NO variations in character or garment across images.
+`;
+
+const GLOBAL_NEGATIVE = "text, watermark, logo, extra fingers, deformed hands, bad anatomy, plastic skin, waxy skin, harsh overhead light, overexposure, blown highlights, oversaturation";
+
 const responseSchema: Schema = {
   type: Type.OBJECT,
   properties: {
@@ -15,9 +39,21 @@ const responseSchema: Schema = {
         vibe: { type: Type.STRING },
         target_audience: { type: Type.STRING },
         suggested_contexts: { type: Type.ARRAY, items: { type: Type.STRING } },
-        suggested_model_styles: { type: Type.ARRAY, items: { type: Type.STRING } }
+        suggested_model_styles: { type: Type.ARRAY, items: { type: Type.STRING } },
+        suggested_poses: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              id: { type: Type.STRING },
+              pose_title: { type: Type.STRING },
+              pose_description: { type: Type.STRING }
+            },
+            required: ["id", "pose_title", "pose_description"]
+          }
+        }
       },
-      required: ["color_palette", "form", "material", "style_keywords", "vibe", "target_audience", "suggested_contexts", "suggested_model_styles"]
+      required: ["color_palette", "vibe", "material", "form", "style_keywords", "target_audience", "suggested_poses"]
     },
     concepts: {
       type: Type.ARRAY,
@@ -73,25 +109,18 @@ const responseSchema: Schema = {
 };
 
 const SYSTEM_INSTRUCTION = `
-Bạn là AI Fashion Creative Director & Senior Prompt Engineer tối cao cho thương hiệu thời trang xa hoa ATHEA.
-Nhiệm vụ: Phân tích sâu các ảnh tham chiếu để tạo ra 03 Concept chụp ảnh đẳng cấp thế giới.
+Bạn là Giám Đốc Sáng Tạo Thời Trang AI của ATHEA. 
+Nhiệm vụ: Phân tích sản phẩm và thiết kế 03 concept chụp ảnh thời trang cao cấp, mỗi concept 05 poses.
 
-QUY TẮC NHẤT QUÁN DANH TÍNH (STRICT IDENTITY LOCK):
-1. PRODUCT_IMAGES: Phải phân tích mọi chi tiết: đường kim mũi chỉ, độ bóng của vải, phom dáng chiết eo, phụ kiện đi kèm. Tuyệt đối không thay đổi màu sắc hay cấu trúc sản phẩm.
-2. FACE_REFERENCE: Giữ nguyên 100% đặc điểm nhận dạng gương mặt. Không làm biến dạng cấu trúc xương mặt.
-3. FABRIC_REFERENCE: Tái hiện chính xác bề mặt chất liệu (ren, lụa, dạ, pinstripe).
+=== MASTER PROFILE ===
+${MASTER_PROFILE}
 
-YÊU CẦU BẮT BUỘC CHO 'pose_prompt' (PHẢI LÀ JSON STRING CHI TIẾT):
-Mỗi 'pose_prompt' phải chứa đầy đủ các trường sau trong một chuỗi JSON:
+=== IDENTITY LOCK ===
+${IDENTITY_LOCK}
 
-- 'subject_lock': Mô tả chi tiết nhân dạng người mẫu dựa trên ảnh tham chiếu (kiểu tóc, màu mắt, thần thái).
-- 'outfit_anchor': Mô tả cực kỳ chi tiết về trang phục đang mặc, nhấn mạnh các điểm bán hàng (VD: "grey pinstripe blazer with sharp shoulders", "white silk turtleneck inner").
-- 'pose_and_framing': Chỉ định dáng đứng nghệ thuật và bố cục khung hình (VD: "Dynamic high-fashion pose, leaning against a luxury car", "Full body shot, slightly low angle to enhance stature"). Chỉ định tiêu cự ống kính (VD: 85mm f/1.2 for portraits, 35mm for environmental editorial).
-- 'environment': Mô tả chi tiết bối cảnh xung quanh dựa trên Concept được chọn (VD: "Parisian street at golden hour, blurred Eiffel Tower in background, sleek black luxury sedan parked on cobblestones").
-- 'lighting_and_camera': Sơ đồ ánh sáng phức tạp (VD: "Rim lighting to separate subject from dark background, soft butterfly lighting on face, Kodak Portra 400 film aesthetic, cinematic color grading, rich shadows, soft bokeh").
-- 'quality_specs': Các từ khóa chất lượng cao nhất (VD: "8k resolution, highly detailed textures, masterwork, masterpiece, photorealistic, sharp focus").
-
-PHONG CÁCH TỔNG THỂ: Editorial Magazine (Vogue, Harper's Bazaar style). Tránh các pose phổ thông, hãy tạo ra những khoảnh khắc lifestyle đắt giá.`;
+Mỗi pose_prompt phải là một mô tả kỹ thuật chi tiết cho AI tạo ảnh, bao gồm: ánh sáng, camera, góc máy, bối cảnh và các chi tiết về người mẫu/trang phục.
+Trả về JSON đúng cấu trúc.
+`;
 
 /**
  * Utility function to handle retries for 429 (Resource Exhausted) errors
@@ -170,7 +199,17 @@ LƯU Ý QUAN TRỌNG: 'pose_prompt' PHẢI là một chuỗi JSON hợp lệ ch�
 
     if (response.text) {
       const data = JSON.parse(response.text) as FashionAIResponse;
-      data.concepts = data.concepts.map((c, i) => ({ ...c, id: `concept-${i}` }));
+      data.concepts = (data.concepts || []).slice(0, 3).map((c, i) => ({
+        ...c,
+        id: `c-${Date.now()}-${i}`,
+        poses: (c.poses || []).slice(0, 5).map(p => ({
+          ...p,
+          negative_prompt: GLOBAL_NEGATIVE,
+          is_face_locked: true,
+          is_outfit_locked: true,
+          is_lighting_locked: !!input.lock_lighting
+        }))
+      }));
       return data;
     }
     throw new Error("No response from AI.");
@@ -303,7 +342,14 @@ YÊU CẦU ĐẶC BIỆT TỪ GIÁM ĐỐC SÁNG TẠO:
     });
 
     if (response.text) {
-      return JSON.parse(response.text);
+      const out = JSON.parse(response.text);
+      return {
+        ...out,
+        negative_prompt: GLOBAL_NEGATIVE,
+        is_face_locked: true,
+        is_outfit_locked: true,
+        is_lighting_locked: !!userInput.lock_lighting
+      };
     }
     throw new Error("Failed to regenerate pose prompt.");
   });

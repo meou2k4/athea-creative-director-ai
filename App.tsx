@@ -40,7 +40,43 @@ import {
   Edit2
 } from 'lucide-react';
 
-const PRESET_SCENES = [
+const GLOBAL_LIGHTING_PROFILE = `
+LIGHTING & COLOR MASTER PROFILE (MUST FOLLOW STRICTLY):
+- Natural daylight, soft and flattering. Prefer early morning or late afternoon (soft golden hour), NOT harsh midday sun.
+- No overhead hard light. No top-down harsh shadows.
+- Key light direction: 45-degree angled side light (camera-left or camera-right), very soft (diffused) — no hard facial shadows.
+- Natural ambient fill light from environment (grass / white table / walls / pavement reflection). Soft bounce fill under chin and eye area.
+- Exposure: bright but balanced; highlights protected; open shadows; gentle contrast; no clipping whites.
+- Aperture: large aperture look (f/1.8–f/2.8) with shallow depth of field; background blur mild-to-moderate.
+- Subject separation: clear separation from background, crisp edges, subtle rim/edge light if needed (natural).
+- Background: blurred enough to feel premium, but NOT mushy; preserve realistic depth and details (luxury, real).
+COLOR & TONE:
+- Warm-neutral overall tone. Clean whites. Avoid strong yellow cast. Avoid overly pink/magenta skin bias.
+- Skin: smooth but keep real texture (pores, micro-texture). Absolutely NO plastic/waxy shine.
+- For brown dresses / warm garments: lift brightness slightly, maintain rich tone, avoid muddy/flat color; preserve fabric depth and folds.
+RENDERING:
+- Photorealistic high-end fashion editorial, ultra high resolution, crisp garment details, realistic fabric behavior.
+NEGATIVE:
+- No HDR overprocessing, no harsh contrast, no orange skin, no pink skin, no blown highlights, no fake glossy skin, no overly blurred background.
+`;
+
+const STRICT_LOCK_APPEND = `
+STRICT LOCK:
+- Do NOT change lighting style, tone mapping, or overall grading across outputs.
+- Keep consistent daylight softness and warm-neutral palette.
+`;
+
+type PresetScene = {
+  id: string;
+  label: string;
+  description: string;
+  icon: any;
+  environmentPrompt?: string;
+  moodTags?: string[];
+  bestFor?: string[];
+};
+
+const PRESET_SCENES: PresetScene[] = [
   { 
     "id": "winter_window_boutique_chic", 
     "label": "Winter Window Boutique Chic", 
@@ -144,6 +180,31 @@ const PRESET_SCENES = [
     icon: Crown 
   }
 ];
+
+function buildEffectiveContext(scene: PresetScene | undefined, lockLighting: boolean) {
+  const sceneBlock = scene
+    ? `
+SCENE SELECTED:
+- Scene Name: ${scene.label}
+- Scene Description (environment only): ${scene.description}
+${scene.environmentPrompt ? `- Environment Prompt: ${scene.environmentPrompt}` : ''}
+${scene.moodTags ? `- Mood Tags: ${scene.moodTags.join(", ")}` : ''}
+${scene.bestFor ? `- Best For: ${scene.bestFor.join(", ")}` : ''}
+`
+    : "";
+
+  return `
+${GLOBAL_LIGHTING_PROFILE}
+${lockLighting ? STRICT_LOCK_APPEND : ""}
+
+${sceneBlock}
+
+OUTPUT REQUIREMENT:
+- Generate a single coherent concept based on the uploaded product.
+- Maintain the same model identity and the same outfit across all poses.
+- Ensure consistent lighting + warm-neutral grading per MASTER PROFILE.
+`;
+}
 
 const AtheaLogo = () => (
   <div className="flex flex-col items-center justify-center leading-none mr-2">
@@ -762,10 +823,13 @@ const App: React.FC = () => {
 
   const handleAnalyze = async () => {
     if (input.productImages.length === 0) return;
+
     setData(null);
-    setLoading({ status: 'analyzing', message: 'Đang thiết kế Concept với Multi-Angle Identity Lock...' });
+    setLoading({ status: 'analyzing', message: 'Hệ thống ATHEA đang thiết kế concept chuyên biệt...' });
+
     const selectedScene = PRESET_SCENES.find(s => s.id === selectedSceneId);
-    const effectiveContext = `${selectedScene?.label}: ${selectedScene?.description}`;
+    const effectiveContext = buildEffectiveContext(selectedScene, input.lock_lighting);
+
     try {
       const result = await analyzeImage({ ...input, context: effectiveContext });
       setData(result);
@@ -773,11 +837,11 @@ const App: React.FC = () => {
     } catch (error: any) {
       console.error(error);
       const isQuota = error.message?.includes("429") || error.message?.includes("RESOURCE_EXHAUSTED");
-      setLoading({ 
-        status: 'error', 
-        message: isQuota 
-          ? 'Hết hạn ngạch (Quota) API. Vui lòng chờ vài phút rồi thử lại.' 
-          : 'Phân tích thất bại. Vui lòng thử lại sau.' 
+      setLoading({
+        status: 'error',
+        message: isQuota
+          ? 'Hết hạn ngạch (Quota) API. Vui lòng chờ vài phút rồi thử lại.'
+          : 'Phân tích thất bại. Vui lòng thử lại sau.'
       });
     }
   };
