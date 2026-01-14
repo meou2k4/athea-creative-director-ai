@@ -975,10 +975,10 @@ const App: React.FC = () => {
                       <ImageUploader label="Tải lên Face Ref" variant="compact" currentPreview={previews.face} onImageSelect={(d, m, u) => { setInput(p => ({...p, faceReference: {data: d, mimeType: m}})); setPreviews(v => ({...v, face: u})); }} onClear={() => { setInput(p => ({...p, faceReference: {data: null, mimeType: null}})); setPreviews(v => ({...v, face: null})); }} />
                     </div>
 
-                    <div className="space-y-2 border-t border-gray-50 pt-3">
+                    {/* <div className="space-y-2 border-t border-gray-50 pt-3">
                       <label className="text-[10px] font-bold uppercase text-gray-500 flex items-center gap-1"><Layers size={12} /> Chất liệu sản phẩm</label>
                       <ImageUploader label="Fabric Ref" variant="compact" currentPreview={previews.fabric} onImageSelect={(d, m, u) => { setInput(p => ({...p, fabricReference: {data: d, mimeType: m}})); setPreviews(v => ({...v, fabric: u})); }} onClear={() => { setInput(p => ({...p, fabricReference: {data: null, mimeType: null}})); setPreviews(v => ({...v, fabric: null})); }} />
-                    </div>
+                    </div> */}
                   </div>
                 </div>
 
