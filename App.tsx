@@ -37,7 +37,8 @@ import {
   Store,
   Crown,
   Gift,
-  Edit2
+  Edit2,
+  ShieldCheck
 } from 'lucide-react';
 
 const GLOBAL_LIGHTING_PROFILE = `
@@ -77,107 +78,113 @@ type PresetScene = {
 };
 
 const PRESET_SCENES: PresetScene[] = [
-  { 
-    "id": "winter_window_boutique_chic", 
-    "label": "Winter Window Boutique Chic", 
-    "description": "Cozy–Chic mùa đông, sang nhẹ (quiet luxury), ấm áp trong nhà – lạnh tuyết ngoài trời; cảm giác \"boutique lookbook\" + \"lifestyle café\". Bối cảnh cốt lõi: không gian boutique/café tối giản, ánh sáng ấm, cửa kính lớn nhìn ra tuyết (cây lá vàng phủ tuyết, phố mùa đông). Điểm nhấn thị giác: outfit nổi bật trên nền trắng tuyết + nội thất be/kem + cây xanh; phụ kiện lifestyle (hoa hồng, ly coffee, mannequin trưng bày) giúp ảnh bán hàng tốt.", 
-    icon: Snowflake 
+  {
+    id: "Đường Phố Châu ÂU",
+    label: "Đường Phố Châu ÂU",
+    description: "Concept outfit cao cấp trong bối cảnh kiến trúc châu Âu cổ điển. Phong cách editorial sang trọng, ánh sáng tự nhiên mềm, tôn chất liệu và phom dáng nữ tính, trí thức.",
+    icon: Crown,
+    environmentPrompt: "classic European city street, stone architecture, symmetrical facades, clean wide street, elegant urban background, no crowd, minimal distractions, soft depth background",
+    moodTags: ["european elegance", "quiet luxury", "lace couture", "feminine editorial", "urban classic"],
+    bestFor: ["lace dresses", "peplum dresses", "bridal-inspired fashion", "high-end office dresses", "luxury feminine collections"]
   },
-  { 
-    "id": "holiday_boutique_chic", 
-    "label": "Holiday Boutique Chic", 
-    "description": "Street-style Editorial mùa lễ hội trước boutique/café. Tinh thần: sang – nhẹ nhàng – \"quiet luxury\", nữ tính, chuẩn \"rich girl aesthetic\". Bối cảnh: trước cửa boutique/café, cửa kính có tủ bánh và ánh đèn ấm; cây thông phủ tuyết + phụ kiện Noel trắng/ánh vàng + hộp quà nơ đỏ. Ánh sáng: tự nhiên mềm + đèn vàng tạo bokeh. Ảnh kiểu editorial bán hàng: rõ chất liệu, tôn dáng, \"đắt tiền\".", 
-    icon: Gift 
+  {
+    id: "Nữ Doanh Nhân Bên Siêu Xe",
+    label: "Nữ Doanh Nhân Bên Siêu Xe",
+    description: "Concept editorial cao cấp dành cho nữ doanh nhân hiện đại. Chủ thể xuất hiện cùng xe mui trần sang trọng giữa phố mua sắm cao cấp. Hình ảnh kết hợp giữa quyền lực, nữ tính và phong thái sống thượng lưu. Trang phục được tôn phom tuyệt đối, ánh sáng tự nhiên mềm giúp da sáng mịn, màu sắc trong trẻo và cảm giác 'đắt tiền' rõ rệt.",
+    icon: Crown,
+    environmentPrompt: "luxury city street in front of high-end fashion boutiques, classic European architecture, clean sidewalks, neutral stone facades, a black vintage convertible car parked curbside, upscale shopping district, minimal pedestrians, elegant storefront windows softly blurred in background",
+    moodTags: ["quiet luxury", "executive glamour", "editorial lifestyle", "city elegance", "high-society femininity"],
+    bestFor: ["office dress", "executive dress", "luxury set suit", "high-end ready-to-wear", "editorial campaign"]
   },
-  { 
-    "id": "white_lace_floral_atelier", 
-    "label": "Floral Atelier", 
-    "description": "Romantic-luxury, thanh lịch kiểu 'tiệm hoa / atelier váy cưới' (trắng-kem), ánh sáng mềm, nền tối giản tôn ren & phom váy. Cửa tiệm hoa/atelier tone trắng, kính lớn, tường trắng, background hoa hồng/pastel (hồng phấn, trắng kem), cảm giác 'clean bridal muse'.", 
-    icon: Flower2 
+  {
+    id: "classic_soft_office_lookbook",
+    label: "Văn Phòng Sang Trọng",
+    description: "Không gian công sở thanh lịch phong cách classic. Bối cảnh tối giản, ánh sáng ban ngày mềm, tập trung tôn phom dáng và chất liệu trang phục. Phù hợp ảnh lookbook, catalog và bán hàng thời trang công sở nữ.",
+    icon: ShieldCheck,
+    environmentPrompt: "classic elegant office interior, ivory and cream walls with subtle classic paneling, white or ivory minimalist desk with smooth surface, soft warm table lamp with fabric lampshade, books and mirror used as subtle props, clean tidy space, no clutter, no modern industrial elements, natural daylight coming from side window, soft diffused lighting, warm-neutral tone, high-end commercial fashion lookbook environment",
+    moodTags: ["classic", "office lady", "soft elegance", "commercial lookbook", "timeless", "clean", "trustworthy"],
+    bestFor: ["office dress", "vest dress", "váy công sở", "set suit nữ", "catalog sản phẩm", "lookbook thương hiệu"]
   },
-  { 
-    "id": "yacht_pink_resort", 
-    "label": "Yacht Daylight Resort", 
-    "description": "Tinh thần 'quiet luxury' trên du thuyền – sang, sạch, nắng đẹp, biển xanh, nội thất yacht trắng kem + gỗ teak. Key visual: biển xanh background, boong tàu trắng, lan can inox, ghế tắm nắng, ly nước chanh, vibe 'rich vacation'.", 
-    icon: Palmtree 
+  {
+    id: "luxury_identity_lock",
+    label: "Luxury Identity Lock",
+    description: "Hệ thống preset chuẩn cho thời trang xa xỉ. Đảm bảo tính nhất quán tuyệt đối về gương mặt mẫu, phom dáng và ánh sáng.",
+    icon: ShieldCheck,
+    environmentPrompt: "a clean minimal luxury environment, bright airy background, subtle high-end interior, no clutter",
+    moodTags: ["quiet luxury", "editorial", "clean"],
+    bestFor: ["office wear", "set suit", "minimal dress", "lookbook"]
   },
-  { 
-    "id": "paris_golden_hour_executive", 
-    "label": "Paris Golden Hour Executive", 
-    "description": "Bối cảnh Paris/Eiffel Tower + xe sang màu đen, ánh hoàng hôn (golden hour), nền bokeh mềm. Tinh thần: sang, cổ điển, 'quiet luxury', khí chất nữ doanh nhân thành thị. Tập trung phom dáng, đường chiết eo & thắt lưng, lifestyle cao cấp.", 
-    icon: Sun 
+  {
+    id: "Giá Treo Sang Trọng",
+    label: "Giá Treo Sang Trọng",
+    description: "Lookbook cao cấp kiểu Outfit được treo trên giá, tối giản, ánh sáng tự nhiên, tập trung phom dáng & chất liệu",
+    icon: Layers,
+    environmentPrompt: "Lookbook cao cấp kiểu Outfit được treo trên giá, tối giản, ánh sáng tự nhiên, tập trung phom dáng & chất liệu",
+    moodTags: ["minimalism", "product focus", "quiet luxury"],
+    bestFor: ["coats", "knitwear", "tweed", "winter sets", "set suit"]
   },
-  { 
-    "id": "urban_cafe_executive", 
-    "label": "Urban Café Executive", 
-    "description": "Nữ doanh nhân thanh lịch – 'quiet luxury' – Parisian Workday Luxury. Bối cảnh: vỉa hè café / phố Tây tối giản, cửa gỗ, mặt đá, cây xanh, background bokeh. Ánh sáng: daylight mềm, hơi 'film', tương phản nhẹ. Styling: set xám pinstripe + inner cổ lọ, kính, túi da nâu, ly take-away. Góc máy: editorial thương mại - lifestyle.", 
-    icon: Coffee 
+  {
+    id: "Nữ Doanh Nhân Thành Đạt",
+    label: "Nữ Doanh Nhân Thành Đạt",
+    description: "Phong cách lookbook/editorial cao cấp: bối cảnh văn phòng sang trọng tối giản, tạo cảm giác nữ doanh nhân thanh lịch.",
+    icon: Briefcase,
+    environmentPrompt: "Phong cách lookbook/editorial bán hàng cao cấp: ánh sáng tự nhiên, bối cảnh văn phòng/không gian làm việc sang trọng tối giản, tạo cảm giác \"nữ doanh nhân thanh lịch, chỉn chu, premium\".",
+    moodTags: ["executive", "success", "quiet luxury"],
+    bestFor: ["coats", "knitwear", "tweed", "winter sets", "set suit"]
   },
-  { 
-    "id": "garden_estate_luncheon", 
-    "label": "Garden Estate Luncheon", 
-    "description": "Luxury garden estate / villa lawn với các cột tân cổ điển. Bàn tiệc dài với hoa trắng, thủy tinh cao cấp. Mood: serene luxury, modern ladylike, summer high-society. Ánh sáng dịu buổi trưa, phong cách airy premium.", 
-    icon: Utensils 
+  {
+    id: "Du Thuyền Sang Trọng",
+    label: "Du Thuyền Ngoài Biển",
+    description: "\"quiet luxury\" trên du thuyền sang, sạch, nắng đẹp, biển xanh, nội thất yacht trắng kem + gỗ teak..",
+    icon: Anchor,
+    environmentPrompt: "\"quiet luxury\" trên du thuyền sang, sạch, nắng đẹp, biển xanh, nội thất yacht trắng kem + gỗ teak. biển xanh làm background, boong tàu trắng, lan can inox, ghế tắm nắng, vibe \"rich vacation\".",
+    moodTags: ["rich vacation", "quiet luxury", "summer"],
+    bestFor: ["resort wear", "knitwear", "swimwear", "winter sets"]
   },
-  { 
-    "id": "luxury_executive_office", 
-    "label": "Luxury Executive Office", 
-    "description": "Nữ doanh nhân thanh lịch trong không gian văn phòng tối giản, ánh sáng tự nhiên. Modern luxury office, floor-to-ceiling windows, light wood desk, clean background. Tone màu Ivory/Warm Neutral. Camera: 85mm portrait look, shallow depth of field.", 
-    icon: Building2 
+  {
+    id: "winter_window_boutique_chic",
+    label: "Winter Window Boutique",
+    description: "Cozy-Chic mùa đông, sang nhẹ, ấm áp trong nhà - lạnh tuyết ngoài trời. Cảm giác boutique lookbook.",
+    icon: Snowflake,
+    environmentPrompt: "a cozy minimalist boutique interior with large window panes looking out to a winter street, warm interior decor with neutral tones",
+    moodTags: ["winter", "boutique", "quiet luxury"],
+    bestFor: ["coats", "knitwear", "tweed", "winter sets"]
   },
-  { 
-    "id": "luxury_city_shopping_stroll", 
-    "label": "City Shopping Stroll", 
-    "description": "Editorial thời trang thương mại tại phố mua sắm cao cấp. Vitrine cửa hàng sang, mặt kính phản chiếu nhẹ, nền phố sạch. Upscale shopping street, luxury storefront windows. Mood: Elegant, premium, modern classic. Lighting: Soft natural daylight, gentle bokeh highlights.", 
-    icon: ShoppingBag 
+  {
+    id: "Quán Cafe Sang Trọng",
+    label: "Quán Cafe Sang Trọng",
+    description: "Concept Lifestyle Editorial cao cấp dành cho nữ doanh nhân hiện đại. Phong cách Quiet Luxury, thanh lịch, trí thức, đời thực nhưng rất 'đắt tiền'. Người mẫu tương tác tự nhiên với không gian café đô thị, ánh sáng ban ngày mềm, tôn phom dáng, chất liệu và khí chất.",
+    icon: Coffee,
+    environmentPrompt: "an upscale urban café exterior with stone walls and wooden doors, European city vibe, clean sidewalk, subtle greenery, natural daylight, soft shadows, shallow depth of field, premium lifestyle editorial atmosphere",
+    moodTags: ["quiet luxury", "executive lifestyle", "urban editorial", "modern elegance", "commercial fashion"],
+    bestFor: ["set suit", "office wear", "pinstripe outfits", "workday luxury looks", "lookbook", "fashion ads"]
   },
-  { 
-    "id": "paris_golden_hour", 
-    "label": "Paris Golden Hour", 
-    "description": "Đường phố Paris cổ kính, ánh nắng vàng rực rỡ buổi chiều tà. Lý tưởng cho phong cách thanh lịch, chic, dạo phố cao cấp.", 
-    icon: Sun 
+  {
+    id: "garden_estate_luncheon",
+    label: "Tiệc Ngoài Trời",
+    description: "Kiểu tiệc trưa ngoài trời ở biệt thự (bàn khăn trắng, hoa trắng, ly pha lê), background tân cổ điển.",
+    icon: Utensils,
+    environmentPrompt: "kiểu tiệc trưa ngoài trời ở biệt thự/estate (bàn dài phủ khăn trắng, hoa trắng, ly pha lê, nến), ánh nắng dịu, background là cột kiến trúc tân cổ điển + vườn được cắt tỉa, tạo cảm giác \"đắt\" nhờ bối cảnh tiệc.",
+    moodTags: ["serene", "ladylike", "estate"],
+    bestFor: ["ladylike dress", "mid-length dress", "formal day dress"]
   },
-  { 
-    "id": "winter_boutique", 
-    "label": "Winter Boutique", 
-    "description": "Không gian cửa hàng sang trọng, ánh sáng vàng ấm áp. Hoàn hảo cho phong cách Quiet Luxury, đồ len, dạ và thời trang mùa đông.", 
-    icon: Snowflake 
+  {
+    id: "white_lace_floral_atelier",
+    label: "Cửa Hàng Hoa Trắng",
+    description: "Romantic-luxury, thanh lịch kiểu atelier (trắng-kem), ánh sáng mềm, nền tối giản tôn ren.",
+    icon: Flower2,
+    environmentPrompt: "trước cửa tiệm hoa/atelier tone trắng, kính lớn + tường trắng, background có hoa hồng/pastel (hồng phấn, trắng kem), cảm giác \"clean bridal muse\".",
+    moodTags: ["romantic", "atelier", "clean"],
+    bestFor: ["white dress", "soft feminine", "lace"]
   },
-  { 
-    "id": "riviera_yacht_lux", 
-    "label": "Riviera Yacht Lux", 
-    "description": "Boong du thuyền hiện đại, nắng gắt, biển xanh biếc. Thích hợp cho Resort wear, đồ bơi cao cấp, phong cách thượng lưu.", 
-    icon: Anchor 
-  },
-  { 
-    "id": "luxury_shopping_street", 
-    "label": "Shopping Street", 
-    "description": "Khu mua sắm sầm uất với các cửa hiệu kính. Dành cho phong cách Modern Commercial, năng động, streetwear cao cấp.", 
-    icon: Store 
-  },
-  { 
-    "id": "corporate_soft_office", 
-    "label": "Soft Office", 
-    "description": "Văn phòng hiện đại với tường kính và ánh sáng tự nhiên. Phù hợp phong cách công sở thanh lịch, nữ lãnh đạo, tối giản.", 
-    icon: Briefcase 
-  },
-  { 
-    "id": "minimal_gallery_rack", 
-    "label": "Minimal Gallery", 
-    "description": "Không gian triển lãm tối giản, ánh sáng studio tập trung. Tập trung vào chi tiết sản phẩm, phong cách Avant-garde, Minimalism.", 
-    icon: GalleryVertical 
-  },
-  { 
-    "id": "autumn_window_atelier", 
-    "label": "Autumn Atelier", 
-    "description": "Xưởng may bên cửa sổ lớn, lá vàng rơi, ánh sáng dịu. Phù hợp cho kể chuyện thời trang, phong cách Vintage, lãng mạn hoài cổ.", 
-    icon: Wind 
-  },
-  { 
-    "id": "grand_hotel_lobby_gala", 
-    "label": "Hotel Lobby Gala", 
-    "description": "Sảnh khách sạn 5 sao, đèn chùm lộng lẫy, ánh sáng lung linh. Dành cho váy dạ hội, phong cách Glamour, tiệc tối sang trọng.", 
-    icon: Crown 
+  {
+    id: "luxury_city_shopping_stroll",
+    label: "City Shopping Stroll",
+    description: "Editorial tại phố mua sắm cao cấp. Kính boutique phản chiếu nhẹ, nền phố sạch.",
+    icon: ShoppingBag,
+    environmentPrompt: "a luxury shopping street with high-end storefront windows, clean pavement",
+    moodTags: ["premium", "shopping street", "commercial"],
+    bestFor: ["luxury sets", "bags", "outerwear"]
   }
 ];
 
@@ -224,7 +231,7 @@ const App: React.FC = () => {
   const [data, setData] = useState<FashionAIResponse | null>(null);
   const [loading, setLoading] = useState<LoadingState>({ status: 'idle' });
   const [activeTab, setActiveTab] = useState<'studio' | 'collection'>('studio');
-  const [selectedSceneId, setSelectedSceneId] = useState("winter_window_boutique_chic");
+  const [selectedSceneId, setSelectedSceneId] = useState("luxury_identity_lock");
   
   const [savedConcepts, setSavedConcepts] = useState<Concept[]>([]);
   const [loadingCollection, setLoadingCollection] = useState(false);
@@ -939,7 +946,7 @@ const App: React.FC = () => {
                   <div className="space-y-2">
                     <label className="text-[10px] font-bold uppercase text-gray-500 flex items-center justify-between">
                       <span className="flex items-center gap-1"><Shirt size={12} /> Sản phẩm ({input.productImages.length})</span>
-                      <span className="text-[9px] text-gray-400 italic">Tải nhiều góc độ</span>
+                      <span className="text-[9px] text-gray-400 italic">Max 4 ảnh</span>
                     </label>
                     <div className="grid grid-cols-2 gap-2">
                       {previews.products.map((p, idx) => (
@@ -975,14 +982,15 @@ const App: React.FC = () => {
                   </div>
                 </div>
 
-                <div className="mb-6">
+                {/* Quốc tịch người mẫu - Ẩn theo UI Downloads */}
+                {/* <div className="mb-6">
                   <label className="block text-xs font-bold uppercase text-gray-500 mb-2">Quốc tịch người mẫu</label>
                   <div className="grid grid-cols-3 gap-2">
                     {['VN', 'KR', 'US'].map(id => (
                       <button key={id} className={`py-2 text-[10px] font-bold rounded border transition-all ${input.modelOrigin === id ? 'bg-black text-white border-black' : 'bg-white text-gray-500 border-gray-200 hover:border-gray-300'}`} onClick={() => { setInput({...input, modelOrigin: id}); }}>{id}</button>
                     ))}
                   </div>
-                </div>
+                </div> */}
 
                 <div className="mb-6">
                   <button onClick={() => setInput(prev => ({...prev, lock_lighting: !prev.lock_lighting}))} className={`w-full flex items-center justify-between p-3 rounded-xl border transition-all ${input.lock_lighting ? 'bg-fashion-accent/5 border-fashion-accent/30' : 'bg-gray-50 border-gray-200'}`}>
@@ -1033,16 +1041,17 @@ const App: React.FC = () => {
                   </div>
                 </div>
 
-                <div className="space-y-4">
+                {/* Yêu cầu bổ sung - Ẩn theo UI Downloads */}
+                {/* <div className="space-y-4">
                   <div>
                     <label className="block text-xs font-bold uppercase text-fashion-accent mb-1 flex items-center gap-1"><PenTool size={12}/> Yêu cầu bổ sung</label>
                     <textarea placeholder="Mô tả chi tiết bạn muốn..." className="w-full bg-yellow-50/50 border border-yellow-200 rounded-lg px-3 py-2 text-sm min-h-[80px] focus:ring-1 focus:ring-fashion-accent/20 focus:border-fashion-accent outline-none transition-all" value={input.customDescription} onChange={(e) => setInput({...input, customDescription: e.target.value})} />
                   </div>
-                </div>
+                </div> */}
 
                 <div className="mt-8 space-y-3">
                   <button onClick={handleAnalyze} disabled={input.productImages.length === 0 || loading.status === 'analyzing'} className="w-full bg-black text-white font-bold py-3 rounded-lg hover:bg-gray-800 disabled:opacity-50 transition-all flex items-center justify-center gap-2 shadow-lg shadow-black/10 active:scale-[0.98]">
-                    {loading.status === 'analyzing' ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div> Đang xử lý...</> : <><Sparkles size={18} /> Chuyển bối cảnh</>}
+                    {loading.status === 'analyzing' ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div> Đang xử lý...</> : <><Sparkles size={18} /> Thiết kế Concept</>}
                   </button>
                   {input.productImages.length > 0 && <button onClick={handleClearAll} className="w-full bg-white text-gray-500 text-sm font-medium py-2 rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors">Reset</button>}
                 </div>
