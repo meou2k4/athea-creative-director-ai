@@ -39,3 +39,27 @@ export const getApiUrl = (endpoint: string): string => {
   return `/${cleanEndpoint}`;
 };
 
+/**
+ * Log to server (not visible to users in browser console)
+ * Only logs to server-side console for monitoring
+ */
+export const logToServer = async (userInfo: string, action: string, status: 'bắt đầu thực hiện' | 'trạng thái(thành công)' | 'trạng thái(thất bại)', details?: string) => {
+  try {
+    // Gửi log lên server (fire and forget, không chờ response)
+    fetch(getApiUrl('/api/log'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        userInfo,
+        action,
+        status,
+        details
+      })
+    }).catch(() => {
+      // Silently fail - không hiển thị lỗi cho user
+    });
+  } catch (error) {
+    // Silently fail - không hiển thị lỗi cho user
+  }
+};
+

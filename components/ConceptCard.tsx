@@ -4,6 +4,7 @@ import { Concept, UserInput, Pose } from '../types';
 import { Copy, Check, Target, MapPin, UserCheck, Camera, Sparkles, Bookmark, Trash2, Image as ImageIcon, Loader2, Edit2, RefreshCw, Eye, X, User, Shirt, ChevronDown, ChevronUp, Download, AlertCircle, ZoomIn, ZoomOut, Maximize, RotateCcw, FolderDown } from 'lucide-react';
 import { generateFashionImage, refineFashionImage, regeneratePosePrompt } from '../services/geminiService';
 import RefineImageModal from './RefineImageModal';
+import { logToServer } from '../utils/api';
 
 interface ConceptCardProps {
   concept: Concept;
@@ -92,6 +93,13 @@ const ConceptCard: React.FC<ConceptCardProps> = ({ concept, index, userInput, on
     
     if (regeneratingPromptIndices.has(idx)) return;
     
+    // Lấy thông tin user từ localStorage để log
+    const storedUserStr = localStorage.getItem('athea_user');
+    const user = storedUserStr ? JSON.parse(storedUserStr) : null;
+    const userInfo = user ? `${user.name}-${user.id}-${user.email}` : `Unknown-${userId || 'Unknown'}-Unknown`;
+    
+    logToServer(userInfo, `Tạo lại prompt pose ${idx + 1}`, 'bắt đầu thực hiện');
+    
     setRegeneratingPromptIndices(prev => new Set(prev).add(idx));
     try {
       // ĐỌC CONCEPT, POSE VÀ KHUÔN TỪ JSON ĐÃ LƯU
@@ -154,8 +162,13 @@ const ConceptCard: React.FC<ConceptCardProps> = ({ concept, index, userInput, on
       
       // Auto expand to show the new creative prompt
       setExpandedPrompts(prev => new Set(prev).add(idx));
-    } catch (error) {
-      console.error("Failed to regenerate prompt", error);
+      
+      logToServer(userInfo, `Tạo lại prompt pose ${idx + 1}`, 'trạng thái(thành công)', 'Đã tạo lại prompt thành công');
+    } catch (error: any) {
+      const storedUserStr = localStorage.getItem('athea_user');
+      const user = storedUserStr ? JSON.parse(storedUserStr) : null;
+      const userInfo = user ? `${user.name}-${user.id}-${user.email}` : `Unknown-${userId || 'Unknown'}-Unknown`;
+      logToServer(userInfo, `Tạo lại prompt pose ${idx + 1}`, 'trạng thái(thất bại)', error.message || 'Không thể tạo lại nội dung');
       alert("Không thể tạo lại nội dung. Vui lòng thử lại sau.");
     } finally {
       setRegeneratingPromptIndices(prev => {
@@ -262,6 +275,13 @@ const ConceptCard: React.FC<ConceptCardProps> = ({ concept, index, userInput, on
       return;
     }
     
+    // Lấy thông tin user từ localStorage để log
+    const storedUserStr = localStorage.getItem('athea_user');
+    const user = storedUserStr ? JSON.parse(storedUserStr) : null;
+    const userInfo = user ? `${user.name}-${user.id}-${user.email}` : `Unknown-${userId || 'Unknown'}-Unknown`;
+    
+    logToServer(userInfo, `Tạo ảnh pose ${poseIndex + 1}`, 'bắt đầu thực hiện');
+    
     toggleLoading(poseIndex, true);
     
     // Xóa lỗi cũ nếu có
@@ -290,12 +310,15 @@ const ConceptCard: React.FC<ConceptCardProps> = ({ concept, index, userInput, on
         }, 0);
         return updatedConcept;
       });
+      
+      logToServer(userInfo, `Tạo ảnh pose ${poseIndex + 1}`, 'trạng thái(thành công)', 'Đã tạo ảnh thành công');
     } catch (error: any) {
-      console.error(`❌ Lỗi tạo ảnh cho pose ${poseIndex + 1}:`, error);
       const isQuota = error.message?.includes("429") || error.message?.includes("RESOURCE_EXHAUSTED");
       const msg = isQuota 
         ? "Đã hết lượt dùng (Quota). Hệ thống sẽ tự động thử lại nếu bạn nhấn 'Tạo lại'." 
         : "Không thể tạo ảnh. Vui lòng thử lại.";
+      
+      logToServer(userInfo, `Tạo ảnh pose ${poseIndex + 1}`, 'trạng thái(thất bại)', error.message || msg);
       
       setErrorIndices(prev => {
         const next = new Map(prev);
@@ -327,9 +350,18 @@ const ConceptCard: React.FC<ConceptCardProps> = ({ concept, index, userInput, on
       
     if (posesToGenerate.length === 0) return;
 
+    // Lấy thông tin user từ localStorage để log
+    const storedUserStr = localStorage.getItem('athea_user');
+    const user = storedUserStr ? JSON.parse(storedUserStr) : null;
+    const userInfo = user ? `${user.name}-${user.id}-${user.email}` : `Unknown-${userId || 'Unknown'}-Unknown`;
+    
+    logToServer(userInfo, 'Tạo tất cả ảnh', 'bắt đầu thực hiện', `${posesToGenerate.length} ảnh`);
+
     setIsGeneratingAll(true);
     const totalTasks = posesToGenerate.length;
     let completedCount = 0;
+    let successCount = 0;
+    let failCount = 0;
     setProgressAll({ current: 0, total: totalTasks });
 
     const taskQueue = [...posesToGenerate];
@@ -367,6 +399,7 @@ const ConceptCard: React.FC<ConceptCardProps> = ({ concept, index, userInput, on
             }, 0);
             return nextConcept;
           });
+          successCount++;
         } catch (e: any) {
           console.error(`Generation error at pose ${i}:`, e);
           const isQuota = e.message?.includes("429") || e.message?.includes("RESOURCE_EXHAUSTED");
@@ -375,6 +408,7 @@ const ConceptCard: React.FC<ConceptCardProps> = ({ concept, index, userInput, on
             next.set(i, isQuota ? "Hết hạn ngạch (429). Đang chờ thử lại..." : "Lỗi xử lý.");
             return next;
           });
+          failCount++;
           
           if (isQuota) {
              // Push back to end of queue and wait on quota error
@@ -395,6 +429,13 @@ const ConceptCard: React.FC<ConceptCardProps> = ({ concept, index, userInput, on
 
     await Promise.all(activeWorkers);
     setIsGeneratingAll(false);
+    
+    // Log kết quả
+    if (failCount === 0) {
+      logToServer(userInfo, 'Tạo tất cả ảnh', 'trạng thái(thành công)', `Đã tạo thành công ${successCount}/${totalTasks} ảnh`);
+    } else {
+      logToServer(userInfo, 'Tạo tất cả ảnh', 'trạng thái(thất bại)', `Thành công ${successCount}/${totalTasks} ảnh, thất bại ${failCount} ảnh`);
+    }
   };
 
   const handleRefineConfirm = async (instruction: string) => {
@@ -406,6 +447,13 @@ const ConceptCard: React.FC<ConceptCardProps> = ({ concept, index, userInput, on
       setRefinePoseIndex(null);
       return;
     }
+    
+    // Lấy thông tin user từ localStorage để log
+    const storedUserStr = localStorage.getItem('athea_user');
+    const user = storedUserStr ? JSON.parse(storedUserStr) : null;
+    const userInfo = user ? `${user.name}-${user.id}-${user.email}` : `Unknown-${userId || 'Unknown'}-Unknown`;
+    
+    logToServer(userInfo, `Chỉnh sửa ảnh pose ${refinePoseIndex + 1}`, 'bắt đầu thực hiện');
     
     setIsRefining(true);
     try {
@@ -434,10 +482,14 @@ const ConceptCard: React.FC<ConceptCardProps> = ({ concept, index, userInput, on
         }, 0);
         return updatedConcept;
       });
-      setRefinePoseIndex(null); 
+      setRefinePoseIndex(null);
+      
+      logToServer(userInfo, `Chỉnh sửa ảnh pose ${refinePoseIndex + 1}`, 'trạng thái(thành công)', 'Đã chỉnh sửa ảnh thành công');
     } catch (error: any) {
       const isQuota = error.message?.includes("429") || error.message?.includes("RESOURCE_EXHAUSTED");
-      alert(isQuota ? "Hết hạn ngạch API (429). Vui lòng đợi 1 phút rồi thử lại." : "Chỉnh sửa thất bại.");
+      const errorMsg = isQuota ? "Hết hạn ngạch API (429). Vui lòng đợi 1 phút rồi thử lại." : "Chỉnh sửa thất bại.";
+      logToServer(userInfo, `Chỉnh sửa ảnh pose ${refinePoseIndex + 1}`, 'trạng thái(thất bại)', error.message || errorMsg);
+      alert(errorMsg);
     } finally {
       setIsRefining(false);
     }

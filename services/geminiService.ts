@@ -4,6 +4,23 @@ import { FashionAIResponse, UserInput, ImageRef, Concept, Pose } from "../types"
 
 /**
  * =========================
+ * MODEL SELECTION
+ * =========================
+ * 
+ * TEXT GENERATION (Content Creation):
+ * - Model: gemini-2.5-flash (001)
+ * - Reason: Stable version, fast response, 1M input tokens, 65K output tokens, 
+ *   supports thinking mode, multimodal (text + images), perfect for fashion concept analysis
+ * 
+ * IMAGE GENERATION:
+ * - Primary: gemini-3-pro-image-preview (Nano Banana Pro)
+ * - Fallback: gemini-2.5-flash-image (Nano Banana)
+ * - Reason: Preview model has thinking mode, higher input capacity (131K vs 32K), 
+ *   better quality. Falls back to stable model if preview unavailable.
+ */
+
+/**
+ * =========================
  * MASTER PHOTO PROFILE (GLOBAL)
  * =========================
  */
@@ -440,11 +457,28 @@ export const generateFashionImage = async (
 
     parts.push({ text: technicalPrompt });
 
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash-image',
-      contents: { parts },
-      config: { imageConfig: { aspectRatio: "3:4" } }
-    });
+    // Thử model preview trước, fallback về stable nếu không hoạt động
+    let response;
+    try {
+      response = await ai.models.generateContent({
+        model: 'gemini-3-pro-image-preview',
+        contents: { parts },
+        config: { imageConfig: { aspectRatio: "3:4" } }
+      });
+    } catch (previewError: any) {
+      // Nếu model preview không available, fallback về stable model
+      const errorMsg = previewError.message || '';
+      if (errorMsg.includes('not found') || errorMsg.includes('not available') || errorMsg.includes('404')) {
+        console.warn('Preview model not available, falling back to stable model');
+        response = await ai.models.generateContent({
+          model: 'gemini-2.5-flash-image',
+          contents: { parts },
+          config: { imageConfig: { aspectRatio: "3:4" } }
+        });
+      } else {
+        throw previewError;
+      }
+    }
     
     // Trả về base64 để frontend hiển thị ngay
     // Ảnh sẽ được lưu vào Drive khi người dùng bấm "Lưu Concept"
@@ -469,15 +503,37 @@ export const refineFashionImage = async (
 
   return callWithRetry(async () => {
     const ai = new GoogleGenAI({ apiKey });
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash-image',
-      contents: {
-        parts: [
-          { inlineData: { data: base64Data, mimeType: mimeType } },
-          { text: `Refine this fashion photograph while keeping the model and clothing exactly the same. Task: ${instruction}.` }
-        ]
+    
+    // Thử model preview trước, fallback về stable nếu không hoạt động
+    let response;
+    try {
+      response = await ai.models.generateContent({
+        model: 'gemini-3-pro-image-preview',
+        contents: {
+          parts: [
+            { inlineData: { data: base64Data, mimeType: mimeType } },
+            { text: `Refine this fashion photograph while keeping the model and clothing exactly the same. Task: ${instruction}.` }
+          ]
+        }
+      });
+    } catch (previewError: any) {
+      // Nếu model preview không available, fallback về stable model
+      const errorMsg = previewError.message || '';
+      if (errorMsg.includes('not found') || errorMsg.includes('not available') || errorMsg.includes('404')) {
+        console.warn('Preview model not available, falling back to stable model');
+        response = await ai.models.generateContent({
+          model: 'gemini-2.5-flash-image',
+          contents: {
+            parts: [
+              { inlineData: { data: base64Data, mimeType: mimeType } },
+              { text: `Refine this fashion photograph while keeping the model and clothing exactly the same. Task: ${instruction}.` }
+            ]
+          }
+        });
+      } else {
+        throw previewError;
       }
-    });
+    }
     
     // Trả về base64 để frontend hiển thị ngay
     // Ảnh sẽ được lưu vào Drive khi người dùng bấm "Lưu Concept"

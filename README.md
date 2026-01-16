@@ -30,6 +30,24 @@ ATHEA là công cụ AI Giám Đốc Sáng Tạo chuyên nghiệp, hỗ trợ t�
 - **Auto Session Check**: Tự động kiểm tra và xác thực user khi load lại trang
 - **Timestamp Tracking**: Tự động cập nhật thời gian đăng nhập và hoạt động (múi giờ Việt Nam)
 
+### 📊 Monitoring & Logging
+- **Server-Side Logging System**: Hệ thống log chi tiết chỉ hiển thị ở server (backend)
+  - Format: `Tên-Mã-Email_Đang làm gì_bắt đầu thực hiện`
+  - Kết quả: `Tên-Mã-Email_Đang làm gì_trạng thái(thành công/thất bại): chi tiết`
+  - Theo dõi tất cả thao tác: authentication, tải collection, lưu/xóa concept, tạo ảnh, v.v.
+  - Log chỉ hiển thị ở server console (không hiển thị cho người dùng)
+  - Frontend chỉ hiển thị lỗi nghiêm trọng (console.error) nếu có
+
+### 🤖 AI Model Selection
+- **Text Generation (Content Creation)**: 
+  - Model: `gemini-2.5-flash` (001) - Stable version
+  - Đặc điểm: Nhanh, 1M input tokens, 65K output tokens, hỗ trợ thinking mode, multimodal
+- **Image Generation**: 
+  - Primary: `gemini-3-pro-image-preview` (Nano Banana Pro) - Preview với chất lượng cao
+  - Fallback: `gemini-2.5-flash-image` (Nano Banana) - Stable version
+  - Tự động fallback về stable model nếu preview không available
+  - Hỗ trợ thinking mode, input capacity cao (131K tokens)
+
 ## 🚀 Demo
 
 Xem demo trực tiếp: https://copy-of-athea-creative-director-ai.vercel.app/
@@ -264,15 +282,18 @@ Xem chi tiết trong file `DEPLOY_INSTRUCTIONS.md`
 
 Hệ thống có 15+ preset scenes được thiết kế sẵn:
 
-- **Winter Window Boutique Chic** - Boutique mùa đông ấm áp
-- **Holiday Boutique Chic** - Street-style mùa lễ hội
-- **Floral Atelier** - Romantic-luxury với hoa
-- **Yacht Daylight Resort** - Du thuyền sang trọng
-- **Paris Golden Hour Executive** - Paris hoàng hôn
-- **Urban Café Executive** - Café phố Tây
-- **Garden Estate Luncheon** - Tiệc vườn sang trọng
-- **Luxury Executive Office** - Văn phòng cao cấp
-- **City Shopping Stroll** - Phố mua sắm
+- **Đường Phố Châu ÂU** - Concept outfit cao cấp trong bối cảnh kiến trúc châu Âu cổ điển
+- **Nữ Doanh Nhân Bên Siêu Xe** - Concept editorial cao cấp dành cho nữ doanh nhân hiện đại
+- **Văn Phòng Sang Trọng** - Không gian công sở thanh lịch phong cách classic
+- **Luxury Identity Lock** - Hệ thống preset chuẩn cho thời trang xa xỉ
+- **Giá Treo Sang Trọng** - Lookbook cao cấp kiểu Outfit được treo trên giá
+- **Nữ Doanh Nhân Thành Đạt** - Phong cách lookbook/editorial cao cấp
+- **Du Thuyền Sang Trọng** - "quiet luxury" trên du thuyền sang, sạch, nắng đẹp
+- **Winter Window Boutique** - Cozy-Chic mùa đông, sang nhẹ, ấm áp
+- **Quán Cafe Sang Trọng** - Concept Lifestyle Editorial cao cấp
+- **Tiệc Ngoài Trời** - Kiểu tiệc trưa ngoài trời ở biệt thự
+- **Cửa Hàng Hoa Trắng** - Romantic-luxury, thanh lịch kiểu atelier
+- **City Shopping Stroll** - Editorial tại phố mua sắm cao cấp
 - Và nhiều hơn nữa...
 
 ## 🔧 Cấu trúc dự án
@@ -281,17 +302,17 @@ Hệ thống có 15+ preset scenes được thiết kế sẵn:
 athea-creative-director-ai/
 ├── components/              # React components
 │   ├── Login.tsx           # Màn hình đăng nhập/đăng ký
-│   ├── ConceptCard.tsx     # Component hiển thị concept
+│   ├── ConceptCard.tsx     # Component hiển thị concept (có logging)
 │   ├── ImageUploader.tsx   # Component upload ảnh
 │   ├── AnalysisDisplay.tsx
 │   ├── Button.tsx
 │   └── RefineImageModal.tsx
 ├── services/               # API services
-│   └── geminiService.ts    # Gemini AI service
+│   └── geminiService.ts    # Gemini AI service (model selection + fallback)
 ├── utils/                  # Utility functions
 │   └── api.ts             # API URL helper
 ├── server.js              # Express backend server
-├── App.tsx                # Main application component
+├── App.tsx                # Main application component (có logging)
 ├── types.ts               # TypeScript type definitions
 ├── package.json
 ├── vite.config.ts         # Vite configuration
@@ -322,6 +343,71 @@ athea-creative-director-ai/
 - Dữ liệu lưu trữ an toàn trên Google Drive
 - Timestamp tracking (múi giờ Việt Nam)
 - CORS được cấu hình cho production
+
+## 📊 Monitoring & Debugging
+
+### Console Logging System
+
+Hệ thống có hệ thống logging chi tiết để theo dõi tiến trình hoạt động:
+
+**Format log:**
+- Bắt đầu: `Tên-Mã-Email_Đang làm gì_bắt đầu thực hiện`
+- Kết quả: `Tên-Mã-Email_Đang làm gì_trạng thái(thành công/thất bại): chi tiết`
+
+**Các thao tác được log:**
+- ✅ Kiểm tra authentication khi load trang
+- ✅ Đăng nhập/Đăng xuất
+- ✅ Tải bộ sưu tập từ Google Drive
+- ✅ Lưu/Cập nhật concept
+- ✅ Xóa concept
+- ✅ Phân tích và thiết kế concept
+- ✅ Tạo ảnh pose (đơn lẻ và hàng loạt)
+- ✅ Chỉnh sửa ảnh (refine)
+- ✅ Tạo lại prompt
+
+**Cách xem log:**
+1. Xem log ở server console (terminal/console nơi chạy server)
+2. Log được gửi từ frontend lên server qua API endpoint `/api/log`
+3. Tất cả log sẽ hiển thị ở server với format: `[LOG] Tên-Mã-Email_Đang làm gì_Trạng thái: chi tiết`
+4. Frontend không hiển thị log trong browser console (chỉ hiển thị lỗi nghiêm trọng nếu có)
+
+**Ví dụ log ở server:**
+```
+[LOG] Nguyen Van A-ABC123-nguyen@email.com_Phân tích và thiết kế concept_bắt đầu thực hiện
+[LOG] Nguyen Van A-ABC123-nguyen@email.com_Phân tích và thiết kế concept_trạng thái(thành công): Đã tạo 3 concept với 15 poses
+[LOG] Nguyen Van A-ABC123-nguyen@email.com_Tạo ảnh pose 1_bắt đầu thực hiện
+[LOG] Nguyen Van A-ABC123-nguyen@email.com_Tạo ảnh pose 1_trạng thái(thành công): Đã tạo ảnh thành công
+```
+
+**Lưu ý:**
+- Log chỉ dành cho developer/admin, không hiển thị cho người dùng cuối
+- Frontend chỉ hiển thị `console.error` cho các lỗi nghiêm trọng ngoài phạm vi quản lý
+
+## 🤖 AI Model Configuration
+
+### Text Generation (Content Creation)
+- **Model**: `gemini-2.5-flash` (version 001)
+- **Lý do chọn**: 
+  - Stable version, đảm bảo ổn định
+  - Tốc độ phản hồi nhanh, phù hợp real-time
+  - Hỗ trợ 1M input tokens, 65K output tokens
+  - Có thinking mode để suy nghĩ sâu hơn
+  - Multimodal (text + images), perfect cho phân tích thời trang
+
+### Image Generation
+- **Primary Model**: `gemini-3-pro-image-preview` (Nano Banana Pro)
+- **Fallback Model**: `gemini-2.5-flash-image` (Nano Banana)
+- **Lý do chọn**:
+  - Preview model có thinking mode, chất lượng cao hơn
+  - Input capacity cao (131K vs 32K tokens)
+  - Tự động fallback về stable model nếu preview không available
+  - Đảm bảo không bị nghẽn hoặc sập hệ thống
+
+**Cơ chế fallback:**
+- Hệ thống tự động thử model preview trước
+- Nếu preview không available (404, not found), tự động chuyển sang stable model
+- Log cảnh báo khi fallback xảy ra
+- Đảm bảo tính ổn định và reliability
 
 ## 🐛 Troubleshooting
 
@@ -368,6 +454,34 @@ Nếu gặp warning về Node.js version:
 - Kiểm tra `VITE_API_BASE_URL` đã set đúng trên Vercel chưa
 - Kiểm tra backend có đang chạy không (test endpoint `/api/test`)
 - Kiểm tra CORS configuration trong `server.js`
+
+### Lỗi Model không available
+
+- Nếu thấy log "Preview model not available, falling back to stable model":
+  - Đây là hành vi bình thường, hệ thống tự động fallback
+  - Model preview có thể không available trong một số trường hợp
+  - Hệ thống sẽ tự động dùng stable model để đảm bảo hoạt động
+- Nếu cả hai model đều fail:
+  - Kiểm tra `GEMINI_API_KEY` có hợp lệ không
+  - Kiểm tra quota API có còn không
+  - Xem log trong console để biết chi tiết lỗi
+
+### Debug với Server Logging
+
+- Xem log ở server console (terminal nơi chạy `npm run dev:server`)
+- Tất cả thao tác sẽ được log với format: `[LOG] Tên-Mã-Email_Thao tác_Trạng thái: chi tiết`
+- Frontend gửi log lên server qua API endpoint `/api/log` (fire-and-forget)
+- Sử dụng log để:
+  - Theo dõi tiến trình xử lý của user
+  - Debug lỗi khi có vấn đề
+  - Kiểm tra performance và timing
+  - Xác minh user actions
+  - Monitoring và analytics
+
+**Lưu ý:**
+- Log không hiển thị trong browser console của người dùng
+- Chỉ developer/admin mới thấy log ở server console
+- Frontend chỉ hiển thị `console.error` cho lỗi nghiêm trọng ngoài phạm vi quản lý
 
 ## 📄 License
 

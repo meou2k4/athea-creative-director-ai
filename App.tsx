@@ -5,7 +5,7 @@ import { FashionAIResponse, LoadingState, UserInput, Concept, ImageRef, User } f
 import ImageUploader from './components/ImageUploader';
 import ConceptCard from './components/ConceptCard';
 import { Login } from './components/Login';
-import { getApiUrl } from './utils/api';
+import { getApiUrl, logToServer } from './utils/api';
 import { 
   Sparkles, 
   Settings2, 
@@ -286,6 +286,9 @@ const App: React.FC = () => {
           return;
         }
 
+        // Log bắt đầu kiểm tra authentication
+        logToServer(`${storedUser.name}-${storedUser.id}-${storedUser.email}`, 'Kiểm tra authentication', 'bắt đầu thực hiện');
+
         // Gọi API để verify user status
         const response = await fetch(getApiUrl('/api/auth'), {
           method: 'POST',
@@ -303,14 +306,22 @@ const App: React.FC = () => {
           setUser(data.user);
           // Cập nhật localStorage với thông tin mới nhất từ server
           localStorage.setItem('athea_user', JSON.stringify(data.user));
+          // Log kết quả thành công
+          logToServer(`${data.user.name}-${data.user.id}-${data.user.email}`, 'Kiểm tra authentication', 'trạng thái(thành công)', 'User đã được xác thực');
         } else {
           // User không tồn tại hoặc không phải APPROVED
-          console.log('User không hợp lệ hoặc chưa được duyệt:', data.message);
+          logToServer(`${storedUser.name}-${storedUser.id}-${storedUser.email}`, 'Kiểm tra authentication', 'trạng thái(thất bại)', data.message || 'User không hợp lệ hoặc chưa được duyệt');
           localStorage.removeItem('athea_user');
           setUser(null);
         }
-      } catch (error) {
-        console.error('Lỗi khi kiểm tra user:', error);
+      } catch (error: any) {
+        const storedUserStr = localStorage.getItem('athea_user');
+        if (storedUserStr) {
+          const storedUser = JSON.parse(storedUserStr);
+          logToServer(`${storedUser.name}-${storedUser.id}-${storedUser.email}`, 'Kiểm tra authentication', 'trạng thái(thất bại)', error.message || 'Lỗi khi kiểm tra user');
+        } else {
+          logToServer('Unknown-Unknown-Unknown', 'Kiểm tra authentication', 'trạng thái(thất bại)', error.message || 'Lỗi khi kiểm tra user');
+        }
         // Nếu có lỗi, xóa localStorage để đảm bảo an toàn
         localStorage.removeItem('athea_user');
         setUser(null);
@@ -326,7 +337,7 @@ const App: React.FC = () => {
   useEffect(() => {
     // Chỉ tải khi đang ở tab Collection và đã có User ID
     if (activeTab === 'collection' && user && (user as any).id) {
-      console.log("Đang tải dữ liệu từ Drive...");
+      logToServer(`${user.name}-${user.id}-${user.email}`, 'Tải bộ sưu tập từ Drive', 'bắt đầu thực hiện');
       setLoadingCollection(true);
       setCollectionLoaded(false);
 
@@ -357,16 +368,18 @@ const App: React.FC = () => {
             setBaselineCollectionState(baselineMap);
             setLocalCollectionState(localMap);
             setHasUnsavedChanges(false);
+            logToServer(`${user.name}-${user.id}-${user.email}`, 'Tải bộ sưu tập từ Drive', 'trạng thái(thành công)', `Đã tải ${data.concepts.length} concept`);
           } else {
             setSavedConcepts([]);
             setBaselineCollectionState(new Map());
             setLocalCollectionState(new Map());
             setHasUnsavedChanges(false);
+            logToServer(`${user.name}-${user.id}-${user.email}`, 'Tải bộ sưu tập từ Drive', 'trạng thái(thành công)', 'Không có concept nào');
           }
           setCollectionLoaded(true);
         })
         .catch(err => {
-          console.error("Lỗi tải bộ sưu tập:", err);
+          logToServer(`${user.name}-${user.id}-${user.email}`, 'Tải bộ sưu tập từ Drive', 'trạng thái(thất bại)', err.message || 'Lỗi tải bộ sưu tập');
           setSavedConcepts([]);
           setCollectionLoaded(true);
         })
@@ -381,11 +394,15 @@ const App: React.FC = () => {
   }, [activeTab, user]);
 
   const handleLogin = (newUser: User) => {
+    logToServer(`${newUser.name}-${newUser.id}-${newUser.email}`, 'Đăng nhập', 'bắt đầu thực hiện');
     setUser(newUser);
     localStorage.setItem('athea_user', JSON.stringify(newUser));
+    logToServer(`${newUser.name}-${newUser.id}-${newUser.email}`, 'Đăng nhập', 'trạng thái(thành công)', 'Đăng nhập thành công');
   };
 
   const handleLogout = () => {
+    if (!user) return;
+    logToServer(`${user.name}-${user.id}-${user.email}`, 'Đăng xuất', 'bắt đầu thực hiện');
     // Kiểm tra unsaved changes trước khi đăng xuất
     if (hasUnsavedChanges || hasUnsavedStudioChanges) {
       const source = hasUnsavedChanges ? 'collection' : 'studio';
@@ -399,6 +416,7 @@ const App: React.FC = () => {
         setHasUnsavedChanges(false);
         setHasUnsavedStudioChanges(false);
         setActiveTab('studio');
+        logToServer(`${user.name}-${user.id}-${user.email}`, 'Đăng xuất', 'trạng thái(thành công)', 'Đăng xuất thành công');
       }, source);
     } else {
       setUser(null);
@@ -408,6 +426,7 @@ const App: React.FC = () => {
       setLocalCollectionState(new Map<string, Concept>());
       setBaselineCollectionState(new Map<string, Concept>());
       setActiveTab('studio');
+      logToServer(`${user.name}-${user.id}-${user.email}`, 'Đăng xuất', 'trạng thái(thành công)', 'Đăng xuất thành công');
     }
   };
 
@@ -501,6 +520,9 @@ const App: React.FC = () => {
     // Kiểm tra xem concept đã tồn tại trong savedConcepts chưa (dựa trên ID)
     const isExisting = savedConcepts.some(c => c.id === conceptId);
     
+    const operation = isExisting ? 'Cập nhật concept' : 'Lưu concept';
+    logToServer(`${user.name}-${user.id}-${user.email}`, operation, 'bắt đầu thực hiện');
+
     // Cập nhật showSaveConfirm để biết đang update hay create
     setShowSaveConfirm(prev => ({ ...prev, isUpdate: isExisting }));
 
@@ -550,12 +572,12 @@ const App: React.FC = () => {
         setSaveSuccess({ show: true, isUpdate: isExisting });
         setTimeout(() => setSaveSuccess({ show: false, isUpdate: false }), 3000);
         
-        console.log(isExisting ? "Đã cập nhật concept trên Drive" : "Đã lưu concept vào Drive");
+        logToServer(`${user.name}-${user.id}-${user.email}`, operation, 'trạng thái(thành công)', `Concept "${newConcept.concept_name_vn || newConcept.concept_name_en}" đã được ${isExisting ? 'cập nhật' : 'lưu'} vào Drive`);
       } else {
         throw new Error(result.message || 'Lỗi lưu concept');
       }
-    } catch (error) {
-      console.error("Lỗi lưu concept:", error);
+    } catch (error: any) {
+      logToServer(`${user.name}-${user.id}-${user.email}`, operation, 'trạng thái(thất bại)', error.message || 'Lỗi lưu concept');
       alert("Không thể lưu concept. Vui lòng thử lại sau.");
     } finally {
       // Tắt loading animation
@@ -572,6 +594,10 @@ const App: React.FC = () => {
   };
 
   const handleUpdateConcept = (updatedConcept: Concept) => {
+    if (!user) return;
+    
+    logToServer(`${user.name}-${user.id}-${user.email}`, 'Cập nhật concept', 'bắt đầu thực hiện');
+    
     // Cập nhật local state để theo dõi thay đổi (KHÔNG cập nhật savedConcepts ngay)
     setLocalCollectionState(prev => {
       const next = new Map<string, Concept>(prev);
@@ -612,6 +638,8 @@ const App: React.FC = () => {
     const newCollection = savedConcepts.map(c => c.id === updatedConcept.id ? updatedConcept : c);
     setSavedConcepts(newCollection);
     localStorage.setItem('fashionAI_savedConcepts', JSON.stringify(newCollection));
+    
+    logToServer(`${user.name}-${user.id}-${user.email}`, 'Cập nhật concept', 'trạng thái(thành công)', `Concept "${updatedConcept.concept_name_vn || updatedConcept.concept_name_en}" đã được cập nhật (chưa lưu vào Drive)`);
   };
   
   // Hàm kiểm tra xem một concept có thay đổi so với baseline không
@@ -787,6 +815,9 @@ const App: React.FC = () => {
       return;
     }
 
+    const conceptName = showDeleteConfirm.conceptName;
+    logToServer(`${user.name}-${user.id}-${user.email}`, 'Xóa concept', 'bắt đầu thực hiện');
+
     // Đóng dialog xác nhận
     setShowDeleteConfirm({ show: false, conceptId: null, conceptName: '' });
 
@@ -815,12 +846,12 @@ const App: React.FC = () => {
         setDeleteSuccess(true);
         setTimeout(() => setDeleteSuccess(false), 3000);
         
-        console.log("Đã xóa concept và tất cả ảnh liên quan từ Drive");
+        logToServer(`${user.name}-${user.id}-${user.email}`, 'Xóa concept', 'trạng thái(thành công)', `Concept "${conceptName}" và tất cả ảnh liên quan đã được xóa từ Drive`);
       } else {
         throw new Error(result.message || 'Lỗi xóa concept');
       }
-    } catch (error) {
-      console.error("Lỗi xóa concept:", error);
+    } catch (error: any) {
+      logToServer(`${user.name}-${user.id}-${user.email}`, 'Xóa concept', 'trạng thái(thất bại)', error.message || 'Lỗi xóa concept');
       alert("Không thể xóa concept. Vui lòng thử lại sau.");
     } finally {
       // Tắt loading animation
@@ -830,6 +861,9 @@ const App: React.FC = () => {
 
   const handleAnalyze = async () => {
     if (input.productImages.length === 0) return;
+    if (!user) return;
+
+    logToServer(`${user.name}-${user.id}-${user.email}`, 'Phân tích và thiết kế concept', 'bắt đầu thực hiện');
 
     setData(null);
     setLoading({ status: 'analyzing', message: 'Hệ thống ATHEA đang thiết kế concept chuyên biệt...' });
@@ -841,14 +875,16 @@ const App: React.FC = () => {
       const result = await analyzeImage({ ...input, context: effectiveContext });
       setData(result);
       setLoading({ status: 'complete' });
+      logToServer(`${user.name}-${user.id}-${user.email}`, 'Phân tích và thiết kế concept', 'trạng thái(thành công)', `Đã tạo ${result.concepts.length} concept với ${result.concepts.reduce((sum, c) => sum + c.poses.length, 0)} poses`);
     } catch (error: any) {
-      console.error(error);
       const isQuota = error.message?.includes("429") || error.message?.includes("RESOURCE_EXHAUSTED");
+      const errorMessage = isQuota
+        ? 'Hết hạn ngạch (Quota) API. Vui lòng chờ vài phút rồi thử lại.'
+        : 'Phân tích thất bại. Vui lòng thử lại sau.';
+      logToServer(`${user.name}-${user.id}-${user.email}`, 'Phân tích và thiết kế concept', 'trạng thái(thất bại)', error.message || errorMessage);
       setLoading({
         status: 'error',
-        message: isQuota
-          ? 'Hết hạn ngạch (Quota) API. Vui lòng chờ vài phút rồi thử lại.'
-          : 'Phân tích thất bại. Vui lòng thử lại sau.'
+        message: errorMessage
       });
     }
   };

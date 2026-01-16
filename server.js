@@ -805,6 +805,23 @@ app.post('/api/auth', async (req, res) => {
     }
 });
 
+// --- API LOGGING ENDPOINT ---
+app.post('/api/log', async (req, res) => {
+    try {
+        const { userInfo, action, status, details } = req.body;
+        
+        // Log vào server console (chỉ server mới thấy)
+        const logMessage = `${userInfo}_${action}_${status}${details ? ': ' + details : ''}`;
+        console.log(`[LOG] ${logMessage}`);
+        
+        // Trả về success ngay lập tức (không cần chờ)
+        res.json({ success: true });
+    } catch (error) {
+        // Không log lỗi logging để tránh loop
+        res.json({ success: true });
+    }
+});
+
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`🚀 Server ready on port ${PORT}`);
     console.log(`📡 API endpoints available:`);
@@ -813,4 +830,5 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log(`   - POST /api/save-image`);
     console.log(`   - POST /api/collection`);
     console.log(`   - POST /api/auth`);
+    console.log(`   - POST /api/log`);
 });
