@@ -16,9 +16,10 @@ interface ConceptCardProps {
   isSaved?: boolean;
   userId?: string; // User ID để lưu ảnh vào Drive
   isLoadingCollection?: boolean; // Đang tải collection
+  onProcessingChange?: (isProcessing: boolean) => void; // Callback khi trạng thái xử lý thay đổi
 }
 
-const ConceptCard: React.FC<ConceptCardProps> = ({ concept, index, userInput, onSave, onRemove, onUpdate, isSaved = false, userId, isLoadingCollection = false }) => {
+const ConceptCard: React.FC<ConceptCardProps> = ({ concept, index, userInput, onSave, onRemove, onUpdate, isSaved = false, userId, isLoadingCollection = false, onProcessingChange }) => {
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [isGeneratingAll, setIsGeneratingAll] = useState(false);
   const [isDownloadingAll, setIsDownloadingAll] = useState(false);
@@ -66,6 +67,14 @@ const ConceptCard: React.FC<ConceptCardProps> = ({ concept, index, userInput, on
       setPosition({ x: 0, y: 0 });
     }
   }, [fullViewImage]);
+
+  // Theo dõi trạng thái xử lý và báo cho parent component
+  useEffect(() => {
+    if (onProcessingChange) {
+      const isProcessing = isGeneratingAll || loadingIndices.size > 0 || regeneratingPromptIndices.size > 0;
+      onProcessingChange(isProcessing);
+    }
+  }, [isGeneratingAll, loadingIndices, regeneratingPromptIndices, onProcessingChange]);
 
   const toggleLoading = (idx: number, isLoading: boolean) => {
     setLoadingIndices(prev => {

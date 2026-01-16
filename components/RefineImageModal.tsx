@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, Sparkles, Wand2 } from 'lucide-react';
 
 interface RefineImageModalProps {
@@ -24,6 +24,13 @@ const RefineImageModal: React.FC<RefineImageModalProps> = ({
 }) => {
   const [instruction, setInstruction] = useState('');
 
+  // Reset instruction khi modal mở
+  useEffect(() => {
+    if (isOpen) {
+      setInstruction('');
+    }
+  }, [isOpen]);
+
   if (!isOpen) return null;
 
   const handleSubmit = () => {
@@ -32,8 +39,13 @@ const RefineImageModal: React.FC<RefineImageModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 bg-black/80 z-[100] flex items-center justify-center p-4 backdrop-blur-sm">
-      <div className="bg-white rounded-xl max-w-2xl w-full overflow-hidden flex flex-col max-h-[90vh] shadow-2xl">
+    <div className="fixed inset-0 bg-black/80 z-[250] flex items-center justify-center p-4 backdrop-blur-sm" onClick={(e) => {
+      // Đóng modal khi click vào overlay (nhưng không đóng khi click vào modal content)
+      if (e.target === e.currentTarget) {
+        onClose();
+      }
+    }}>
+      <div className="bg-white rounded-xl max-w-2xl w-full overflow-hidden flex flex-col max-h-[90vh] shadow-2xl" onClick={(e) => e.stopPropagation()}>
         {/* Header */}
         <div className="p-4 border-b border-gray-100 flex justify-between items-center bg-white">
           <h3 className="font-serif text-lg font-bold flex items-center gap-2 text-gray-900">
@@ -65,6 +77,15 @@ const RefineImageModal: React.FC<RefineImageModalProps> = ({
                    placeholder="Mô tả chi tiết phần cần sửa. Ví dụ: Làm rõ nét khuôn mặt, sửa ngón tay, thay đổi ánh sáng nền sang tông ấm hơn..."
                    value={instruction}
                    onChange={(e) => setInstruction(e.target.value)}
+                   onKeyDown={(e) => {
+                     // Cho phép Ctrl+Enter hoặc Cmd+Enter để submit
+                     if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+                       e.preventDefault();
+                       if (!isRefining && instruction.trim()) {
+                         handleSubmit();
+                       }
+                     }
+                   }}
                  />
                </div>
 
@@ -97,9 +118,16 @@ const RefineImageModal: React.FC<RefineImageModalProps> = ({
             Hủy bỏ
           </button>
           <button
-            onClick={handleSubmit}
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              if (!isRefining && instruction.trim()) {
+                handleSubmit();
+              }
+            }}
             disabled={isRefining || !instruction.trim()}
-            className="px-6 py-2.5 bg-black text-white text-sm font-bold rounded-lg hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 transition-all shadow-lg shadow-black/20"
+            className="px-6 py-2.5 bg-black text-white text-sm font-bold rounded-lg hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 transition-all shadow-lg shadow-black/20 active:scale-[0.98]"
+            type="button"
           >
             {isRefining ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div> : <Wand2 size={16} />}
             {isRefining ? 'Đang xử lý...' : 'Tạo lại ảnh'}

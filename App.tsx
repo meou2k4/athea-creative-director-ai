@@ -251,6 +251,7 @@ const App: React.FC = () => {
   const [pendingAction, setPendingAction] = useState<(() => void) | null>(null);
   const [localCollectionState, setLocalCollectionState] = useState<Map<string, Concept>>(new Map());
   const [baselineCollectionState, setBaselineCollectionState] = useState<Map<string, Concept>>(new Map()); // Trạng thái ban đầu khi load từ Drive
+  const [processingConcepts, setProcessingConcepts] = useState<Map<string, boolean>>(new Map()); // Map conceptId -> isProcessing để theo dõi ConceptCard đang xử lý
 
   const [input, setInput] = useState<UserInput>({
     productImages: [],
@@ -390,6 +391,7 @@ const App: React.FC = () => {
       // Reset khi chuyển tab
       setLoadingCollection(false);
       setCollectionLoaded(false);
+      setProcessingConcepts(new Map()); // Reset processing state khi chuyển tab
     }
   }, [activeTab, user]);
 
@@ -404,8 +406,27 @@ const App: React.FC = () => {
     if (!user) return;
     logToServer(`${user.name}-${user.id}-${user.email}`, 'Đăng xuất', 'bắt đầu thực hiện');
     // Kiểm tra unsaved changes trước khi đăng xuất
-    if (hasUnsavedChanges || hasUnsavedStudioChanges) {
-      const source = hasUnsavedChanges ? 'collection' : 'studio';
+    // Chỉ không cảnh báo khi: đã tải xong data driver (collectionLoaded === true) và không có unsaved changes và không có ConceptCard đang xử lý
+    const shouldSkipWarning = activeTab === 'collection' && !loadingCollection && collectionLoaded && !hasUnsavedChanges && processingConcepts.size === 0;
+    
+    if (shouldSkipWarning) {
+      // Đã tải xong và hiển thị giao diện, không có unsaved changes, không có ConceptCard đang xử lý, cho phép đăng xuất mà không cần cảnh báo
+      setUser(null);
+      localStorage.removeItem('athea_user');
+      setData(null);
+      setSavedConcepts([]);
+      setLocalCollectionState(new Map<string, Concept>());
+      setBaselineCollectionState(new Map<string, Concept>());
+      setHasUnsavedChanges(false);
+      setHasUnsavedStudioChanges(false);
+      setActiveTab('studio');
+      logToServer(`${user.name}-${user.id}-${user.email}`, 'Đăng xuất', 'trạng thái(thành công)', 'Đăng xuất thành công');
+      return;
+    }
+    
+    // Cảnh báo nếu có unsaved changes, đang load, hoặc đang xử lý (handlePendingAction sẽ xử lý)
+    if (hasUnsavedChanges || hasUnsavedStudioChanges || (activeTab === 'collection' && (loadingCollection || processingConcepts.size > 0))) {
+      const source = hasUnsavedChanges || (activeTab === 'collection' && (loadingCollection || processingConcepts.size > 0)) ? 'collection' : 'studio';
       handlePendingAction(() => {
         setUser(null);
         localStorage.removeItem('athea_user');
@@ -694,7 +715,12 @@ const App: React.FC = () => {
   // Hàm xử lý khi người dùng muốn thực hiện action có thể mất dữ liệu
   const handlePendingAction = (action: () => void, source: 'studio' | 'collection' = 'collection') => {
     const hasChanges = source === 'studio' ? hasUnsavedStudioChanges : hasUnsavedChanges;
-    if (hasChanges) {
+    // Nếu đang ở Collection và đang load, luôn cảnh báo
+    const isLoadingInCollection = source === 'collection' && loadingCollection;
+    // Kiểm tra xem có ConceptCard nào đang xử lý không
+    const isProcessingInCollection = source === 'collection' && processingConcepts.size > 0;
+    
+    if (isLoadingInCollection || isProcessingInCollection || hasChanges) {
       setUnsavedWarningSource(source);
       setPendingAction(() => action);
       setShowUnsavedWarning(true);
@@ -752,7 +778,15 @@ const App: React.FC = () => {
   // Thêm beforeunload handler để cảnh báo khi đóng tab/tải lại trang
   useEffect(() => {
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-      if (hasUnsavedChanges || hasUnsavedStudioChanges) {
+      // Chỉ không cảnh báo khi: đã tải xong data driver (collectionLoaded === true) và không có unsaved changes và không có ConceptCard đang xử lý
+      const shouldSkipWarning = activeTab === 'collection' && !loadingCollection && collectionLoaded && !hasUnsavedChanges && processingConcepts.size === 0;
+      
+      if (shouldSkipWarning) {
+        return;
+      }
+      
+      // Cảnh báo nếu đang load, đang xử lý, hoặc có unsaved changes
+      if ((activeTab === 'collection' && (loadingCollection || processingConcepts.size > 0)) || hasUnsavedChanges || hasUnsavedStudioChanges) {
         e.preventDefault();
         e.returnValue = ''; // Chrome requires returnValue to be set
         return ''; // Some browsers require return value
@@ -764,7 +798,71 @@ const App: React.FC = () => {
     return () => {
       window.removeEventListener('beforeunload', handleBeforeUnload);
     };
-  }, [hasUnsavedChanges, hasUnsavedStudioChanges]);
+  }, [hasUnsavedChanges, hasUnsavedStudioChanges, loadingCollection, collectionLoaded, activeTab, processingConcepts]);
+
+  // Thêm popstate handler để cảnh báo khi quay lại/tiếp trang (back/forward)
+  useEffect(() => {
+    const handlePopState = (e: PopStateEvent) => {
+      // Chỉ không cảnh báo khi: đã tải xong data driver (collectionLoaded === true) và không có unsaved changes và không có ConceptCard đang xử lý
+      const shouldSkipWarning = activeTab === 'collection' && !loadingCollection && collectionLoaded && !hasUnsavedChanges && processingConcepts.size === 0;
+      
+      if (shouldSkipWarning) {
+        return;
+      }
+      
+      // Cảnh báo nếu đang load, đang xử lý, hoặc có unsaved changes
+      if ((activeTab === 'collection' && (loadingCollection || processingConcepts.size > 0)) || hasUnsavedChanges || hasUnsavedStudioChanges) {
+        // Hiển thị cảnh báo và ngăn chặn navigation
+        const confirmed = window.confirm(
+          unsavedWarningSource === 'studio'
+            ? loading.status === 'analyzing'
+              ? 'Hệ thống đang xử lý phân tích concept. Nếu tiếp tục, quá trình xử lý sẽ bị hủy và dữ liệu có thể bị mất. Bạn có chắc chắn muốn tiếp tục?'
+              : 'Bạn có dữ liệu chưa được lưu trong Studio. Nếu tiếp tục, tất cả các thay đổi chưa lưu sẽ bị mất. Bạn có chắc chắn muốn tiếp tục?'
+            : 'Bạn có dữ liệu chưa được lưu trong Bộ sưu tập. Nếu tiếp tục, tất cả các thay đổi chưa lưu sẽ bị mất. Bạn có chắc chắn muốn tiếp tục?'
+        );
+        
+        if (!confirmed) {
+          // Ngăn chặn navigation bằng cách push lại state hiện tại
+          window.history.pushState(null, '', window.location.href);
+        } else {
+          // Reset state nếu người dùng xác nhận
+          if (unsavedWarningSource === 'studio') {
+            setHasUnsavedStudioChanges(false);
+            setData(null);
+            setInput({
+              productImages: [],
+              faceReference: { data: null, mimeType: null },
+              fabricReference: { data: null, mimeType: null },
+              context: '', modelStyle: '', suggestions: '', customDescription: '',
+              modelOrigin: 'VN', lock_lighting: true
+            });
+            setPreviews({ products: [], face: null, fabric: null });
+            setLoading({ status: 'idle' });
+          } else {
+            setHasUnsavedChanges(false);
+            const resetMap = new Map<string, Concept>();
+            baselineCollectionState.forEach((concept, id) => {
+              resetMap.set(id, concept);
+            });
+            setLocalCollectionState(resetMap);
+            const resetConcepts: Concept[] = [];
+            baselineCollectionState.forEach((concept) => {
+              resetConcepts.push(concept);
+            });
+            setSavedConcepts(resetConcepts);
+          }
+        }
+      }
+    };
+    
+    // Push state ban đầu để có thể detect back/forward
+    window.history.pushState(null, '', window.location.href);
+    window.addEventListener('popstate', handlePopState);
+    
+    return () => {
+      window.removeEventListener('popstate', handlePopState);
+    };
+  }, [hasUnsavedChanges, hasUnsavedStudioChanges, loadingCollection, collectionLoaded, activeTab, processingConcepts, unsavedWarningSource, loading.status, baselineCollectionState]);
   
   // Kiểm tra unsaved changes khi localCollectionState thay đổi
   useEffect(() => {
@@ -779,16 +877,18 @@ const App: React.FC = () => {
       // Có dữ liệu chưa lưu nếu:
       // 1. Có input (productImages, faceReference, fabricReference, customDescription)
       // 2. Hoặc có data (concepts đã generate) nhưng chưa lưu vào collection
+      // 3. Hoặc đang trong quá trình xử lý (analyzing)
       const hasInput = input.productImages.length > 0 || 
                        input.faceReference.data !== null || 
                        input.fabricReference.data !== null || 
                        input.customDescription.trim() !== '';
       const hasData = data !== null;
-      setHasUnsavedStudioChanges(hasInput || hasData);
+      const isProcessing = loading.status === 'analyzing';
+      setHasUnsavedStudioChanges(hasInput || hasData || isProcessing);
     } else {
       setHasUnsavedStudioChanges(false);
     }
-  }, [input, data, activeTab]);
+  }, [input, data, activeTab, loading.status]);
 
   const handleRemoveConcept = (id: string) => {
     // Chặn nếu đang tải collection
@@ -890,19 +990,44 @@ const App: React.FC = () => {
   };
 
   const handleClearAll = () => {
-    // Reset tất cả state về trạng thái ban đầu
-    setData(null);
-    setInput({
-      productImages: [],
-      faceReference: { data: null, mimeType: null },
-      fabricReference: { data: null, mimeType: null },
-      context: '', modelStyle: '', suggestions: '', customDescription: '',
-      modelOrigin: 'VN', lock_lighting: true
-    });
-    setPreviews({ products: [], face: null, fabric: null });
-    setLoading({ status: 'idle' });
-    // Reset unsaved changes flag để cho phép thao tác mới
-    setHasUnsavedStudioChanges(false);
+    // Kiểm tra nếu có dữ liệu cần cảnh báo
+    const hasData = data !== null || 
+                    input.productImages.length > 0 || 
+                    input.faceReference.data !== null || 
+                    input.fabricReference.data !== null || 
+                    input.customDescription.trim() !== '' ||
+                    loading.status === 'analyzing';
+    
+    if (hasData) {
+      handlePendingAction(() => {
+        // Reset tất cả state về trạng thái ban đầu
+        setData(null);
+        setInput({
+          productImages: [],
+          faceReference: { data: null, mimeType: null },
+          fabricReference: { data: null, mimeType: null },
+          context: '', modelStyle: '', suggestions: '', customDescription: '',
+          modelOrigin: 'VN', lock_lighting: true
+        });
+        setPreviews({ products: [], face: null, fabric: null });
+        setLoading({ status: 'idle' });
+        // Reset unsaved changes flag để cho phép thao tác mới
+        setHasUnsavedStudioChanges(false);
+      }, 'studio');
+    } else {
+      // Không có dữ liệu, reset bình thường
+      setData(null);
+      setInput({
+        productImages: [],
+        faceReference: { data: null, mimeType: null },
+        fabricReference: { data: null, mimeType: null },
+        context: '', modelStyle: '', suggestions: '', customDescription: '',
+        modelOrigin: 'VN', lock_lighting: true
+      });
+      setPreviews({ products: [], face: null, fabric: null });
+      setLoading({ status: 'idle' });
+      setHasUnsavedStudioChanges(false);
+    }
   };
 
   // Hiển thị loading screen khi đang kiểm tra authentication
@@ -928,7 +1053,12 @@ const App: React.FC = () => {
       <header className="fixed top-0 left-0 right-0 bg-white/90 backdrop-blur-md z-50 border-b border-gray-200">
         <div className="max-w-[1600px] mx-auto px-6 h-16 flex items-center justify-between">
           <div className="flex items-center cursor-pointer" onClick={() => {
-            if (activeTab === 'collection' && hasUnsavedChanges) {
+            // Chỉ không cảnh báo khi: đã tải xong data driver (collectionLoaded === true) và không có unsaved changes và không có ConceptCard đang xử lý
+            const shouldSkipWarning = activeTab === 'collection' && !loadingCollection && collectionLoaded && !hasUnsavedChanges && processingConcepts.size === 0;
+            
+            if (shouldSkipWarning) {
+              setActiveTab('studio');
+            } else if (activeTab === 'collection' && (hasUnsavedChanges || loadingCollection || processingConcepts.size > 0)) {
               handlePendingAction(() => setActiveTab('studio'), 'collection');
             } else if (activeTab === 'studio' && hasUnsavedStudioChanges) {
               handlePendingAction(() => setActiveTab('studio'), 'studio');
@@ -945,15 +1075,24 @@ const App: React.FC = () => {
           <div className="flex items-center gap-4">
             <nav className="flex items-center bg-gray-100 p-1 rounded-lg">
               <button onClick={() => {
-                if (activeTab === 'collection' && hasUnsavedChanges) {
+                // Chỉ không cảnh báo khi: đã tải xong data driver (collectionLoaded === true) và không có unsaved changes và không có ConceptCard đang xử lý
+                const shouldSkipWarning = activeTab === 'collection' && !loadingCollection && collectionLoaded && !hasUnsavedChanges && processingConcepts.size === 0;
+                
+                if (shouldSkipWarning) {
+                  setActiveTab('studio');
+                } else if (activeTab === 'collection' && (hasUnsavedChanges || loadingCollection || processingConcepts.size > 0)) {
                   handlePendingAction(() => setActiveTab('studio'), 'collection');
                 } else {
                   setActiveTab('studio');
                 }
               }} className={`px-4 py-1.5 rounded-md text-xs font-bold uppercase ${activeTab === 'studio' ? 'bg-white text-black shadow-sm' : 'text-gray-500'}`}><LayoutGrid size={14} className="inline mr-2" /> Studio</button>
               <button onClick={() => {
-                // Chuyển từ Studio sang Collection: giữ nguyên data, không cảnh báo
-                setActiveTab('collection');
+                // Kiểm tra nếu đang ở Studio và có dữ liệu chưa lưu hoặc đang xử lý
+                if (activeTab === 'studio' && (hasUnsavedStudioChanges || loading.status === 'analyzing')) {
+                  handlePendingAction(() => setActiveTab('collection'), 'studio');
+                } else {
+                  setActiveTab('collection');
+                }
               }} className={`px-4 py-1.5 rounded-md text-xs font-bold uppercase ${activeTab === 'collection' ? 'bg-white text-black shadow-sm' : 'text-gray-500'}`}><Bookmark size={14} className="inline mr-2" /> Bộ sưu tập</button>
             </nav>
             <div className="flex items-center gap-3 border-l border-gray-200 pl-4">
@@ -1178,7 +1317,18 @@ const App: React.FC = () => {
                     }} 
                     userId={(user as any)?.id} 
                     isLoadingCollection={loadingCollection} 
-                    isSaved={true} 
+                    isSaved={true}
+                    onProcessingChange={(isProcessing) => {
+                      setProcessingConcepts(prev => {
+                        const next = new Map(prev);
+                        if (isProcessing) {
+                          next.set(concept.id, true);
+                        } else {
+                          next.delete(concept.id);
+                        }
+                        return next;
+                      });
+                    }}
                   />;
                 })}
               </div>
@@ -1252,8 +1402,14 @@ const App: React.FC = () => {
                 </h3>
                 <p className="text-gray-600 text-sm leading-relaxed">
                   {unsavedWarningSource === 'studio' 
-                    ? 'Bạn có dữ liệu chưa được lưu trong Studio. Nếu tiếp tục, tất cả các thay đổi chưa lưu sẽ bị mất.'
-                    : 'Bạn có dữ liệu chưa được lưu trong Bộ sưu tập. Nếu tiếp tục, tất cả các thay đổi chưa lưu sẽ bị mất.'}
+                    ? loading.status === 'analyzing'
+                      ? 'Hệ thống đang xử lý phân tích concept. Nếu tiếp tục, quá trình xử lý sẽ bị hủy và dữ liệu có thể bị mất.'
+                      : 'Bạn có dữ liệu chưa được lưu trong Studio. Nếu tiếp tục, tất cả các thay đổi chưa lưu sẽ bị mất.'
+                    : loadingCollection
+                      ? 'Hệ thống đang tải dữ liệu từ Drive. Nếu tiếp tục, quá trình tải sẽ bị hủy và có thể mất dữ liệu chưa lưu.'
+                      : processingConcepts.size > 0
+                        ? 'Hệ thống đang xử lý tạo ảnh hoặc Creative Refresh trong Bộ sưu tập. Nếu tiếp tục, quá trình xử lý sẽ bị hủy và dữ liệu có thể bị mất.'
+                        : 'Bạn có dữ liệu chưa được lưu trong Bộ sưu tập. Nếu tiếp tục, tất cả các thay đổi chưa lưu sẽ bị mất.'}
                 </p>
                 <p className="text-gray-500 text-xs mt-2">
                   Vui lòng lưu các thay đổi trước khi tiếp tục hoặc xác nhận để bỏ qua.
