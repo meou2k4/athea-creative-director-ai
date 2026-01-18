@@ -50,7 +50,7 @@ ATHEA là công cụ AI Giám Đốc Sáng Tạo chuyên nghiệp, hỗ trợ t�
 
 ## 🚀 Demo
 
-Xem demo trực tiếp: https://copy-of-athea-creative-director-ai.vercel.app/
+Xem demo trực tiếp: https://athea-studio.vercel.app/
 
 ## 📋 Yêu cầu hệ thống
 
