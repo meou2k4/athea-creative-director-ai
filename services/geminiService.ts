@@ -454,10 +454,12 @@ export const generateFashionImage = async (
         STRICT: Keep the face from the face reference image and the outfit details from ALL product images exactly as shown.`;
     } catch (e) {}
 
-    // Thêm yêu cầu chất lượng cao vào prompt
+    // Thêm yêu cầu chất lượng cao vào prompt — yêu cầu rõ ràng trả về inline image (PNG) ở full resolution
     const highQualityPrompt = `Generate a HIGH RESOLUTION fashion photograph with exceptional detail and quality.
-    IMPORTANT: Create image at maximum available resolution (at least 2048x3072 pixels for 3:4 aspect ratio).
-    Use ultra-high detail, 8K quality, professional photography standards.
+    IMPORTANT (API RESPONSE REQUIREMENT): Return the full-resolution image as inline base64 image data (PNG) in the response parts, not only a text description or thumbnail.
+    DO NOT downscale or compress the image. Output must preserve maximum photographic detail (at least 2048x3072 pixels for 3:4 aspect ratio if available).
+    Use ultra-high detail, professional photography standards, natural skin texture, and fabric micro-detail.
+    Response format requirement: include an inlineData part with mimeType 'image/png' and the full base64 image payload.
     ${technicalPrompt}`;
 
     parts.push({ text: highQualityPrompt });
@@ -529,10 +531,11 @@ export const refineFashionImage = async (
 
     for (let attempt = 1; attempt <= 3; attempt++) {
       try {
-        // Thêm yêu cầu chất lượng cao cho refine
+        // Thêm yêu cầu chất lượng cao cho refine — yêu cầu rõ ràng trả về inline image (PNG) ở full resolution
         const highQualityRefinePrompt = `Refine this fashion photograph while keeping the model and clothing exactly the same.
-        IMPORTANT: Maintain maximum resolution and ultra-high detail quality.
-        Generate refined image at highest available resolution with exceptional detail.
+        IMPORTANT (API RESPONSE REQUIREMENT): Return the refined image as inline base64 image data (PNG) in the response parts, do NOT return only text or a thumbnail.
+        DO NOT downscale or compress the image. Maintain maximum resolution and ultra-high detail quality (preserve at least original pixel dimensions or up to the model's maximum).
+        Ensure output includes an inlineData part with mimeType 'image/png' and the full base64 image payload.
         Task: ${instruction}.`;
 
         response = await ai.models.generateContent({
