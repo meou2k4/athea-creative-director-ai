@@ -457,26 +457,26 @@ export const generateFashionImage = async (
 
     parts.push({ text: technicalPrompt });
 
-    // Thử model preview trước, fallback về stable nếu không hoạt động
+    // Thử model trước, fallback về stable nếu không hoạt động
     let response;
     try {
       response = await ai.models.generateContent({
-        model: 'gemini-3-pro-image-preview',
+        model: 'gemini-2.5-flash-image',
         contents: { parts },
         config: { imageConfig: { aspectRatio: "3:4" } }
       });
-    } catch (previewError: any) {
-      // Nếu model preview không available, fallback về stable model
-      const errorMsg = previewError.message || '';
+    } catch (error: any) {
+      // Fallback về model thứ 2 nếu model đầu không hoạt động
+      const errorMsg = error.message || '';
       if (errorMsg.includes('not found') || errorMsg.includes('not available') || errorMsg.includes('404')) {
-        console.warn('Preview model not available, falling back to stable model');
+        console.warn('Primary model not available, falling back to secondary model');
         response = await ai.models.generateContent({
-          model: 'gemini-2.5-flash-image',
+          model: 'gemini-2.0-flash-exp',
           contents: { parts },
           config: { imageConfig: { aspectRatio: "3:4" } }
         });
       } else {
-        throw previewError;
+        throw error;
       }
     }
     
@@ -504,11 +504,11 @@ export const refineFashionImage = async (
   return callWithRetry(async () => {
     const ai = new GoogleGenAI({ apiKey });
     
-    // Thử model preview trước, fallback về stable nếu không hoạt động
+    // Thử model trước, fallback về stable nếu không hoạt động
     let response;
     try {
       response = await ai.models.generateContent({
-        model: 'gemini-3-pro-image-preview',
+        model: 'gemini-2.5-flash-image',
         contents: {
           parts: [
             { inlineData: { data: base64Data, mimeType: mimeType } },
@@ -516,13 +516,13 @@ export const refineFashionImage = async (
           ]
         }
       });
-    } catch (previewError: any) {
-      // Nếu model preview không available, fallback về stable model
-      const errorMsg = previewError.message || '';
+    } catch (error: any) {
+      // Fallback về model thứ 2 nếu model đầu không hoạt động
+      const errorMsg = error.message || '';
       if (errorMsg.includes('not found') || errorMsg.includes('not available') || errorMsg.includes('404')) {
-        console.warn('Preview model not available, falling back to stable model');
+        console.warn('Primary model not available, falling back to secondary model');
         response = await ai.models.generateContent({
-          model: 'gemini-2.5-flash-image',
+          model: 'gemini-2.0-flash-exp',
           contents: {
             parts: [
               { inlineData: { data: base64Data, mimeType: mimeType } },
@@ -531,7 +531,7 @@ export const refineFashionImage = async (
           }
         });
       } else {
-        throw previewError;
+        throw error;
       }
     }
     
