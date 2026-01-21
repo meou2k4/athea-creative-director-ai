@@ -13,8 +13,9 @@ import { FashionAIResponse, UserInput, ImageRef, Concept, Pose } from "../types"
  *   supports thinking mode, multimodal (text + images), perfect for fashion concept analysis
  * 
  * IMAGE GENERATION:
- * - Model: imagen-4.0-ultra-generate-001
- * - Reason: High-quality image generation model for fashion photography
+ * - Model: gemini-3-pro-image-preview
+ * - Reason: High-quality image generation model (2K/4K) for fashion photography
+ * - Retry: 3 attempts, then fail completely if unavailable
  */
 
 /**
@@ -455,12 +456,38 @@ export const generateFashionImage = async (
 
     parts.push({ text: technicalPrompt });
 
-    // Sử dụng Imagen model để tạo ảnh
-    const response = await ai.models.generateContent({
-      model: 'imagen-4.0-ultra-generate-001',
-      contents: { parts },
-      config: { imageConfig: { aspectRatio: "3:4" } }
-    });
+    // Chỉ dùng gemini-3-pro-image-preview với retry 3 lần
+    let response;
+    let lastError: any;
+
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        response = await ai.models.generateContent({
+          model: 'gemini-3-pro-image-preview',
+          contents: { parts },
+          config: { imageConfig: { aspectRatio: "3:4" } }
+        });
+        break; // Thành công, thoát vòng lặp
+      } catch (error: any) {
+        lastError = error;
+        const errorMsg = error.message || '';
+        if (errorMsg.includes('not found') || errorMsg.includes('not available') || errorMsg.includes('404')) {
+          console.warn(`Model gemini-3-pro-image-preview không khả dụng (lần ${attempt}/3)`);
+          if (attempt < 3) {
+            // Đợi 2 giây trước khi thử lại
+            await new Promise(resolve => setTimeout(resolve, 2000));
+            continue;
+          }
+        }
+        // Nếu không phải lỗi 404 hoặc đã thử 3 lần, throw luôn
+        throw error;
+      }
+    }
+
+    // Nếu sau 3 lần vẫn không được, throw error
+    if (!response) {
+      throw new Error(`Model gemini-3-pro-image-preview không khả dụng sau 3 lần thử. Chi tiết lỗi: ${lastError?.message || 'Unknown error'}`);
+    }
     
     // Trả về base64 để frontend hiển thị ngay
     // Ảnh sẽ được lưu vào Drive khi người dùng bấm "Lưu Concept"
@@ -486,16 +513,42 @@ export const refineFashionImage = async (
   return callWithRetry(async () => {
     const ai = new GoogleGenAI({ apiKey });
     
-    // Sử dụng Imagen model để tinh chỉnh ảnh
-    const response = await ai.models.generateContent({
-      model: 'imagen-4.0-ultra-generate-001',
-      contents: {
-        parts: [
-          { inlineData: { data: base64Data, mimeType: mimeType } },
-          { text: `Refine this fashion photograph while keeping the model and clothing exactly the same. Task: ${instruction}.` }
-        ]
+    // Chỉ dùng gemini-3-pro-image-preview với retry 3 lần
+    let response;
+    let lastError: any;
+
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        response = await ai.models.generateContent({
+          model: 'gemini-3-pro-image-preview',
+          contents: {
+            parts: [
+              { inlineData: { data: base64Data, mimeType: mimeType } },
+              { text: `Refine this fashion photograph while keeping the model and clothing exactly the same. Task: ${instruction}.` }
+            ]
+          }
+        });
+        break; // Thành công, thoát vòng lặp
+      } catch (error: any) {
+        lastError = error;
+        const errorMsg = error.message || '';
+        if (errorMsg.includes('not found') || errorMsg.includes('not available') || errorMsg.includes('404')) {
+          console.warn(`Model gemini-3-pro-image-preview không khả dụng cho refine (lần ${attempt}/3)`);
+          if (attempt < 3) {
+            // Đợi 2 giây trước khi thử lại
+            await new Promise(resolve => setTimeout(resolve, 2000));
+            continue;
+          }
+        }
+        // Nếu không phải lỗi 404 hoặc đã thử 3 lần, throw luôn
+        throw error;
       }
-    });
+    }
+
+    // Nếu sau 3 lần vẫn không được, throw error
+    if (!response) {
+      throw new Error(`Model gemini-3-pro-image-preview không khả dụng sau 3 lần thử cho refine. Chi tiết lỗi: ${lastError?.message || 'Unknown error'}`);
+    }
     
     // Trả về base64 để frontend hiển thị ngay
     // Ảnh sẽ được lưu vào Drive khi người dùng bấm "Lưu Concept"
