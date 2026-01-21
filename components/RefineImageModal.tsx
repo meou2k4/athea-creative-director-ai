@@ -23,11 +23,14 @@ const RefineImageModal: React.FC<RefineImageModalProps> = ({
   isOpen, onClose, imageUrl, onRefine, isRefining
 }) => {
   const [instruction, setInstruction] = useState('');
+  const [showHint, setShowHint] = useState(true);
 
   // Reset instruction khi modal mở
   useEffect(() => {
     if (isOpen) {
-      setInstruction('');
+      // Tự động chọn suggestion đầu tiên để button hoạt động ngay
+      setInstruction(COMMON_FIXES[0]);
+      setShowHint(true);
     }
   }, [isOpen]);
 
@@ -37,6 +40,9 @@ const RefineImageModal: React.FC<RefineImageModalProps> = ({
     if (!instruction.trim()) return;
     onRefine(instruction);
   };
+
+  // Check if button should be enabled
+  const isButtonEnabled = !isRefining && instruction.trim().length > 0;
 
   return (
     <div className="fixed inset-0 bg-black/80 z-[250] flex items-center justify-center p-4 backdrop-blur-sm" onClick={(e) => {
@@ -73,20 +79,30 @@ const RefineImageModal: React.FC<RefineImageModalProps> = ({
                <div>
                  <label className="block text-sm font-bold text-gray-700 mb-2">Yêu cầu chỉnh sửa</label>
                  <textarea
-                   className="w-full border border-gray-300 rounded-lg p-3 text-sm focus:outline-none focus:border-fashion-accent focus:ring-1 focus:ring-fashion-accent/20 min-h-[120px] transition-all bg-white"
+                   className={`w-full border rounded-lg p-3 text-sm focus:outline-none focus:border-fashion-accent focus:ring-1 focus:ring-fashion-accent/20 min-h-[120px] transition-all bg-white ${!isButtonEnabled && instruction.trim() === '' ? 'border-fashion-accent/50' : 'border-gray-300'}`}
                    placeholder="Mô tả chi tiết phần cần sửa. Ví dụ: Làm rõ nét khuôn mặt, sửa ngón tay, thay đổi ánh sáng nền sang tông ấm hơn..."
                    value={instruction}
-                   onChange={(e) => setInstruction(e.target.value)}
+                   onChange={(e) => {
+                     setInstruction(e.target.value);
+                     setShowHint(false);
+                   }}
                    onKeyDown={(e) => {
                      // Cho phép Ctrl+Enter hoặc Cmd+Enter để submit
                      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
                        e.preventDefault();
-                       if (!isRefining && instruction.trim()) {
+                       if (isButtonEnabled) {
                          handleSubmit();
                        }
                      }
                    }}
                  />
+                 {/* Hint for user */}
+                 {showHint && (
+                   <p className="text-xs text-fashion-accent mt-2 flex items-center gap-1">
+                     <Sparkles size={12} />
+                     Đã chọn sẵn gợi ý phổ biến nhất. Bạn có thể chỉnh sửa hoặc chọn gợi ý khác bên dưới.
+                   </p>
+                 )}
                </div>
 
                <div>
@@ -94,11 +110,18 @@ const RefineImageModal: React.FC<RefineImageModalProps> = ({
                     <Sparkles size={12} /> Gợi ý sửa nhanh
                  </label>
                  <div className="flex flex-wrap gap-2">
-                   {COMMON_FIXES.map(fix => (
+                   {COMMON_FIXES.map((fix, idx) => (
                      <button
                        key={fix}
-                       onClick={() => setInstruction(prev => prev ? `${prev}, ${fix}` : fix)}
-                       className="px-3 py-1.5 bg-white hover:bg-white hover:border-fashion-accent hover:text-fashion-accent border border-gray-200 rounded-md text-xs transition-all shadow-sm text-gray-600"
+                       onClick={() => {
+                         setInstruction(fix);
+                         setShowHint(false);
+                       }}
+                       className={`px-3 py-1.5 rounded-md text-xs transition-all shadow-sm border ${
+                         instruction === fix 
+                           ? 'bg-fashion-accent text-white border-fashion-accent' 
+                           : 'bg-white text-gray-600 border-gray-200 hover:border-fashion-accent hover:text-fashion-accent'
+                       }`}
                      >
                        {fix}
                      </button>
@@ -121,12 +144,16 @@ const RefineImageModal: React.FC<RefineImageModalProps> = ({
             onClick={(e) => {
               e.preventDefault();
               e.stopPropagation();
-              if (!isRefining && instruction.trim()) {
+              if (isButtonEnabled) {
                 handleSubmit();
               }
             }}
-            disabled={isRefining || !instruction.trim()}
-            className="px-6 py-2.5 bg-black text-white text-sm font-bold rounded-lg hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 transition-all shadow-lg shadow-black/20 active:scale-[0.98]"
+            disabled={!isButtonEnabled}
+            className={`px-6 py-2.5 text-white text-sm font-bold rounded-lg flex items-center gap-2 transition-all shadow-lg shadow-black/20 active:scale-[0.98] ${
+              isButtonEnabled 
+                ? 'bg-black hover:bg-gray-800 cursor-pointer' 
+                : 'bg-gray-300 cursor-not-allowed'
+            }`}
             type="button"
           >
             {isRefining ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div> : <Wand2 size={16} />}
