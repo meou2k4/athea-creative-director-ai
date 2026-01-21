@@ -13,10 +13,8 @@ import { FashionAIResponse, UserInput, ImageRef, Concept, Pose } from "../types"
  *   supports thinking mode, multimodal (text + images), perfect for fashion concept analysis
  * 
  * IMAGE GENERATION:
- * - Primary: gemini-3-pro-image-preview (Nano Banana Pro)
- * - Fallback: gemini-2.5-flash-image (Nano Banana)
- * - Reason: Preview model has thinking mode, higher input capacity (131K vs 32K), 
- *   better quality. Falls back to stable model if preview unavailable.
+ * - Model: imagen-4.0-ultra-generate-001
+ * - Reason: High-quality image generation model for fashion photography
  */
 
 /**
@@ -457,28 +455,12 @@ export const generateFashionImage = async (
 
     parts.push({ text: technicalPrompt });
 
-    // Thử model trước, fallback về stable nếu không hoạt động
-    let response;
-    try {
-      response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash-image',
-        contents: { parts },
-        config: { imageConfig: { aspectRatio: "3:4" } }
-      });
-    } catch (error: any) {
-      // Fallback về model thứ 2 nếu model đầu không hoạt động
-      const errorMsg = error.message || '';
-      if (errorMsg.includes('not found') || errorMsg.includes('not available') || errorMsg.includes('404')) {
-        console.warn('Primary model not available, falling back to secondary model');
-        response = await ai.models.generateContent({
-          model: 'gemini-2.0-flash-exp',
-          contents: { parts },
-          config: { imageConfig: { aspectRatio: "3:4" } }
-        });
-      } else {
-        throw error;
-      }
-    }
+    // Sử dụng Imagen model để tạo ảnh
+    const response = await ai.models.generateContent({
+      model: 'imagen-4.0-ultra-generate-001',
+      contents: { parts },
+      config: { imageConfig: { aspectRatio: "3:4" } }
+    });
     
     // Trả về base64 để frontend hiển thị ngay
     // Ảnh sẽ được lưu vào Drive khi người dùng bấm "Lưu Concept"
@@ -504,36 +486,16 @@ export const refineFashionImage = async (
   return callWithRetry(async () => {
     const ai = new GoogleGenAI({ apiKey });
     
-    // Thử model trước, fallback về stable nếu không hoạt động
-    let response;
-    try {
-      response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash-image',
-        contents: {
-          parts: [
-            { inlineData: { data: base64Data, mimeType: mimeType } },
-            { text: `Refine this fashion photograph while keeping the model and clothing exactly the same. Task: ${instruction}.` }
-          ]
-        }
-      });
-    } catch (error: any) {
-      // Fallback về model thứ 2 nếu model đầu không hoạt động
-      const errorMsg = error.message || '';
-      if (errorMsg.includes('not found') || errorMsg.includes('not available') || errorMsg.includes('404')) {
-        console.warn('Primary model not available, falling back to secondary model');
-        response = await ai.models.generateContent({
-          model: 'gemini-2.0-flash-exp',
-          contents: {
-            parts: [
-              { inlineData: { data: base64Data, mimeType: mimeType } },
-              { text: `Refine this fashion photograph while keeping the model and clothing exactly the same. Task: ${instruction}.` }
-            ]
-          }
-        });
-      } else {
-        throw error;
+    // Sử dụng Imagen model để tinh chỉnh ảnh
+    const response = await ai.models.generateContent({
+      model: 'imagen-4.0-ultra-generate-001',
+      contents: {
+        parts: [
+          { inlineData: { data: base64Data, mimeType: mimeType } },
+          { text: `Refine this fashion photograph while keeping the model and clothing exactly the same. Task: ${instruction}.` }
+        ]
       }
-    }
+    });
     
     // Trả về base64 để frontend hiển thị ngay
     // Ảnh sẽ được lưu vào Drive khi người dùng bấm "Lưu Concept"
