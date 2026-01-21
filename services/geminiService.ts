@@ -454,7 +454,13 @@ export const generateFashionImage = async (
         STRICT: Keep the face from the face reference image and the outfit details from ALL product images exactly as shown.`;
     } catch (e) {}
 
-    parts.push({ text: technicalPrompt });
+    // Thêm yêu cầu chất lượng cao vào prompt
+    const highQualityPrompt = `Generate a HIGH RESOLUTION fashion photograph with exceptional detail and quality.
+    IMPORTANT: Create image at maximum available resolution (at least 2048x3072 pixels for 3:4 aspect ratio).
+    Use ultra-high detail, 8K quality, professional photography standards.
+    ${technicalPrompt}`;
+
+    parts.push({ text: highQualityPrompt });
 
     // Chỉ dùng gemini-3-pro-image-preview với retry 3 lần
     let response;
@@ -465,7 +471,11 @@ export const generateFashionImage = async (
         response = await ai.models.generateContent({
           model: 'gemini-3-pro-image-preview',
           contents: { parts },
-          config: { imageConfig: { aspectRatio: "3:4" } }
+          config: {
+            imageConfig: {
+              aspectRatio: "3:4"
+            }
+          }
         });
         break; // Thành công, thoát vòng lặp
       } catch (error: any) {
@@ -519,12 +529,18 @@ export const refineFashionImage = async (
 
     for (let attempt = 1; attempt <= 3; attempt++) {
       try {
+        // Thêm yêu cầu chất lượng cao cho refine
+        const highQualityRefinePrompt = `Refine this fashion photograph while keeping the model and clothing exactly the same.
+        IMPORTANT: Maintain maximum resolution and ultra-high detail quality.
+        Generate refined image at highest available resolution with exceptional detail.
+        Task: ${instruction}.`;
+
         response = await ai.models.generateContent({
           model: 'gemini-3-pro-image-preview',
           contents: {
             parts: [
               { inlineData: { data: base64Data, mimeType: mimeType } },
-              { text: `Refine this fashion photograph while keeping the model and clothing exactly the same. Task: ${instruction}.` }
+              { text: highQualityRefinePrompt }
             ]
           }
         });
