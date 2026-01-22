@@ -6,18 +6,18 @@ import ImageUploader from './components/ImageUploader';
 import ConceptCard from './components/ConceptCard';
 import { Login } from './components/Login';
 import { getApiUrl, logToServer } from './utils/api';
-import { 
-  Sparkles, 
-  Settings2, 
-  PenTool, 
-  LayoutGrid, 
-  Bookmark, 
-  Zap, 
-  ZapOff, 
-  Shirt, 
-  UserCheck, 
-  Layers, 
-  Trash2, 
+import {
+  Sparkles,
+  Settings2,
+  PenTool,
+  LayoutGrid,
+  Bookmark,
+  Zap,
+  ZapOff,
+  Shirt,
+  UserCheck,
+  Layers,
+  Trash2,
   Sun,
   Snowflake,
   Building2,
@@ -43,28 +43,73 @@ import {
 
 const GLOBAL_LIGHTING_PROFILE = `
 LIGHTING & COLOR MASTER PROFILE (MUST FOLLOW STRICTLY):
-- Natural daylight, soft and flattering. Prefer early morning or late afternoon (soft golden hour), NOT harsh midday sun.
-- No overhead hard light. No top-down harsh shadows.
-- Key light direction: 45-degree angled side light (camera-left or camera-right), very soft (diffused) — no hard facial shadows.
-- Natural ambient fill light from environment (grass / white table / walls / pavement reflection). Soft bounce fill under chin and eye area.
-- Exposure: bright but balanced; highlights protected; open shadows; gentle contrast; no clipping whites.
-- Aperture: large aperture look (f/1.8–f/2.8) with shallow depth of field; background blur mild-to-moderate.
-- Subject separation: clear separation from background, crisp edges, subtle rim/edge light if needed (natural).
-- Background: blurred enough to feel premium, but NOT mushy; preserve realistic depth and details (luxury, real).
+- Natural daylight, soft and flattering. Prefer overcast bright day / early morning / late afternoon. NEVER harsh midday sun.
+- No overhead hard light. No top-down harsh shadows. No direct flash.
+- Key light: soft diffused side light at 30–45 degrees (camera-left or camera-right), gentle falloff, no harsh facial shadows.
+- Ambient bounce fill from bright neutral surfaces (stone walls, pavement, ivory interiors). Subtle fill under chin and eyes.
+- Exposure: bright but balanced; protect highlights; open shadows; gentle contrast; NO clipping whites.
+- Depth of field: premium large-aperture look (f/2.0–f/2.8). Mild-to-moderate background blur (premium separation, not mushy).
+- Subject separation: crisp edges, subtle natural edge/rim separation if needed (must remain realistic).
+- Background must stay elegant and softly blurred; preserve realistic depth cues.
+
 COLOR & TONE:
-- Warm-neutral overall tone. Clean whites. Avoid strong yellow cast. Avoid overly pink/magenta skin bias.
-- Skin: smooth but keep real texture (pores, micro-texture). Absolutely NO plastic/waxy shine.
-- For brown dresses / warm garments: lift brightness slightly, maintain rich tone, avoid muddy/flat color; preserve fabric depth and folds.
+- Warm-neutral editorial palette. Clean airy whites (ivory/cream when appropriate), NOT cold bluish white.
+- Avoid strong yellow cast and avoid pink/magenta skin bias.
+- Skin: smooth, luminous, REAL texture preserved (no plastic/waxy, no oily shine).
+- Overall: “bright, breathable, clean, expensive” — soothing to the eyes, not aggressive.
+
 RENDERING:
-- Photorealistic high-end fashion editorial, ultra high resolution, crisp garment details, realistic fabric behavior.
-NEGATIVE:
-- No HDR overprocessing, no harsh contrast, no orange skin, no pink skin, no blown highlights, no fake glossy skin, no overly blurred background.
+- Photorealistic high-end fashion editorial, ultra-high resolution, crisp garment detail, realistic fabric behavior, natural skin.
+`;
+
+const GLOBAL_MATERIAL_PROFILE = `
+MATERIAL / TEXTURE MASTER PROFILE (MUST FOLLOW):
+- Fabric must look premium and expensive, with refined micro-texture.
+- For lace & delicate textures: patterns must be clearly defined but softly rendered (no harsh sharpening, no crunchy texture).
+- Lace color should read as warm ivory / soft cream when white-lace; never cold grey-white; never blown-out pure white.
+- Texture balance:
+  - Keep garment texture visible and elegant.
+  - Reduce harsh micro-contrast; avoid gritty look.
+- Maintain subtle dimensionality in lace through gentle directional light, NOT through hard contrast.
+- Skin vs fabric rule:
+  - Skin smoother than fabric, but still real.
+  - Fabric retains more texture than skin to feel expensive and editorial.
+`;
+
+const GLOBAL_SCENE_GUARDRAILS = `
+SCENE GUARDRAILS (MUST FOLLOW):
+- Environment complements the outfit, never overpowers it.
+- Background palette: neutral, soft, elegant (stone/beige/ivory/light grey/clean wood).
+- No busy patterns, no clutter, no visual noise, no random signage, no distracting crowds.
+- Keep background slightly blurred; the garment silhouette & fabric texture are the visual focus.
+- Luxury realism: premium, clean, editorial, “quiet luxury”.
+`;
+
+const GLOBAL_CAMERA_PROFILE = `
+CAMERA / OPTICS PROFILE:
+- Professional fashion photography aesthetic.
+- 50mm–85mm equivalent look; natural perspective; no wide-angle distortion.
+- Camera angle: slightly below eye level or at torso level for elegant proportions (no top-down selfie look).
+- Balanced exposure with preserved highlights and fine fabric detail.
+`;
+
+const GLOBAL_NEGATIVE_PROMPT = `
+GLOBAL NEGATIVE (STRICT):
+- harsh lighting, hard shadows, overhead spotlight, direct flash
+- HDR overprocessing, oversaturated, heavy contrast, gritty micro-contrast
+- blown highlights, clipped whites, grey dirty whites, cold bluish whites
+- orange skin, pink/magenta skin, waxy/plastic skin, oily glossy skin
+- cheap lace texture, rough lace, plastic fabric, overly sharp crunchy details
+- busy background, clutter, text/signage, crowds, visual noise
+- wide-angle distortion, unnatural proportions, warped anatomy
+- low resolution, blur on subject, artifacts
 `;
 
 const STRICT_LOCK_APPEND = `
-STRICT LOCK:
+STRICT LOCK (DO NOT VIOLATE):
 - Do NOT change lighting style, tone mapping, or overall grading across outputs.
-- Keep consistent daylight softness and warm-neutral palette.
+- Keep consistent soft daylight and warm-neutral editorial palette.
+- Keep the same “clean airy premium” look.
 `;
 
 type PresetScene = {
@@ -78,6 +123,15 @@ type PresetScene = {
 };
 
 const PRESET_SCENES: PresetScene[] = [
+  {
+    id: "Studio",
+    label: "Studio",
+    description: "Concept editorial cao cấp mang tinh thần bridal hiện đại. Không gian studio tối giản, ánh sáng tự nhiên dịu nhẹ, tôn phom dáng, chất liệu và vẻ đẹp nữ tính thanh lịch .",
+    icon: Sparkles,
+    environmentPrompt: "a minimal luxury studio interior, soft ivory walls, elegant console table, white floral arrangement, clean  room style, no clutter, high-end editorial atmosphere, Soft natural diffused lighting, high-key exposure, smooth skin texture, gentle highlights on fabric folds, luxury bridal editorial photography, shallow depth of field, creamy background, elegant feminine mood",
+    moodTags: ["bridal elegance", "soft luxury", "timeless", "feminine", "editorial"],
+    bestFor: ["white dress", "occasion dress", "bridal-inspired dress", "evening gown", "luxury lookbook"]
+  },
   {
     id: "Đường Phố Châu ÂU",
     label: "Đường Phố Châu ÂU",
@@ -194,14 +248,17 @@ function buildEffectiveContext(scene: PresetScene | undefined, lockLighting: boo
 SCENE SELECTED:
 - Scene Name: ${scene.label}
 - Scene Description (environment only): ${scene.description}
-${scene.environmentPrompt ? `- Environment Prompt: ${scene.environmentPrompt}` : ''}
-${scene.moodTags ? `- Mood Tags: ${scene.moodTags.join(", ")}` : ''}
-${scene.bestFor ? `- Best For: ${scene.bestFor.join(", ")}` : ''}
+- Environment Prompt: ${scene.environmentPrompt}
+- Mood Tags: ${scene.moodTags ? scene.moodTags.join(", ") : ""}
 `
     : "";
 
   return `
 ${GLOBAL_LIGHTING_PROFILE}
+${GLOBAL_MATERIAL_PROFILE}
+${GLOBAL_SCENE_GUARDRAILS}
+${GLOBAL_CAMERA_PROFILE}
+${GLOBAL_NEGATIVE_PROMPT}
 ${lockLighting ? STRICT_LOCK_APPEND : ""}
 
 ${sceneBlock}
@@ -232,17 +289,17 @@ const App: React.FC = () => {
   const [loading, setLoading] = useState<LoadingState>({ status: 'idle' });
   const [activeTab, setActiveTab] = useState<'studio' | 'collection'>('studio');
   const [selectedSceneId, setSelectedSceneId] = useState("luxury_identity_lock");
-  
+
   const [savedConcepts, setSavedConcepts] = useState<Concept[]>([]);
   const [loadingCollection, setLoadingCollection] = useState(false);
   const [collectionLoaded, setCollectionLoaded] = useState(false);
-  const [savingConcept, setSavingConcept] = useState<{isSaving: boolean, conceptId: string | null}>({isSaving: false, conceptId: null});
-  const [showSaveConfirm, setShowSaveConfirm] = useState<{show: boolean, concept: Concept | null, isUpdate?: boolean}>({show: false, concept: null, isUpdate: false});
-  const [saveSuccess, setSaveSuccess] = useState<{show: boolean, isUpdate: boolean}>({show: false, isUpdate: false});
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState<{show: boolean, conceptId: string | null, conceptName: string}>({show: false, conceptId: null, conceptName: ''});
-  const [deletingConcept, setDeletingConcept] = useState<{isDeleting: boolean, conceptId: string | null}>({isDeleting: false, conceptId: null});
+  const [savingConcept, setSavingConcept] = useState<{ isSaving: boolean, conceptId: string | null }>({ isSaving: false, conceptId: null });
+  const [showSaveConfirm, setShowSaveConfirm] = useState<{ show: boolean, concept: Concept | null, isUpdate?: boolean }>({ show: false, concept: null, isUpdate: false });
+  const [saveSuccess, setSaveSuccess] = useState<{ show: boolean, isUpdate: boolean }>({ show: false, isUpdate: false });
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState<{ show: boolean, conceptId: string | null, conceptName: string }>({ show: false, conceptId: null, conceptName: '' });
+  const [deletingConcept, setDeletingConcept] = useState<{ isDeleting: boolean, conceptId: string | null }>({ isDeleting: false, conceptId: null });
   const [deleteSuccess, setDeleteSuccess] = useState(false);
-  
+
   // State để theo dõi dữ liệu chưa lưu
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [hasUnsavedStudioChanges, setHasUnsavedStudioChanges] = useState(false);
@@ -261,10 +318,10 @@ const App: React.FC = () => {
     modelOrigin: 'VN', lock_lighting: true
   });
 
-  const [previews, setPreviews] = useState({ 
-    products: [] as string[], 
-    face: null as string|null, 
-    fabric: null as string|null 
+  const [previews, setPreviews] = useState({
+    products: [] as string[],
+    face: null as string | null,
+    fabric: null as string | null
   });
 
   // --- CODE MỚI: Kiểm tra user từ localStorage khi load lại trang ---
@@ -408,7 +465,7 @@ const App: React.FC = () => {
     // Kiểm tra unsaved changes trước khi đăng xuất
     // Chỉ không cảnh báo khi: đã tải xong data driver (collectionLoaded === true) và không có unsaved changes và không có ConceptCard đang xử lý
     const shouldSkipWarning = activeTab === 'collection' && !loadingCollection && collectionLoaded && !hasUnsavedChanges && processingConcepts.size === 0;
-    
+
     if (shouldSkipWarning) {
       // Đã tải xong và hiển thị giao diện, không có unsaved changes, không có ConceptCard đang xử lý, cho phép đăng xuất mà không cần cảnh báo
       setUser(null);
@@ -423,7 +480,7 @@ const App: React.FC = () => {
       logToServer(`${user.name}-${user.id}-${user.email}`, 'Đăng xuất', 'trạng thái(thành công)', 'Đăng xuất thành công');
       return;
     }
-    
+
     // Cảnh báo nếu có unsaved changes, đang load, hoặc đang xử lý (handlePendingAction sẽ xử lý)
     if (hasUnsavedChanges || hasUnsavedStudioChanges || (activeTab === 'collection' && (loadingCollection || processingConcepts.size > 0))) {
       const source = hasUnsavedChanges || (activeTab === 'collection' && (loadingCollection || processingConcepts.size > 0)) ? 'collection' : 'studio';
@@ -529,18 +586,18 @@ const App: React.FC = () => {
       }
       return `saved-${Math.abs(hash).toString(36)}`;
     };
-    
+
     const conceptId = generateStableId(conceptToSave);
     // Đảm bảo input được lưu cùng concept (để dùng lại khi tạo ảnh)
-    const newConcept = { 
-      ...conceptToSave, 
+    const newConcept = {
+      ...conceptToSave,
       id: conceptId,
       input: input // Lưu input (productImages, faceReference, fabricReference) cùng concept
     };
-    
+
     // Kiểm tra xem concept đã tồn tại trong savedConcepts chưa (dựa trên ID)
     const isExisting = savedConcepts.some(c => c.id === conceptId);
-    
+
     const operation = isExisting ? 'Cập nhật concept' : 'Lưu concept';
     logToServer(`${user.name}-${user.id}-${user.email}`, operation, 'bắt đầu thực hiện');
 
@@ -564,7 +621,7 @@ const App: React.FC = () => {
       });
 
       const result = await response.json();
-      
+
       if (result.success) {
         // Cập nhật giao diện sau khi lưu thành công
         if (isExisting) {
@@ -574,7 +631,7 @@ const App: React.FC = () => {
           // Thêm concept mới
           setSavedConcepts(prev => [newConcept, ...prev]);
         }
-        
+
         // Reset unsaved changes cho concept này vì đã được lưu
         // Cập nhật cả baseline và local state
         setBaselineCollectionState(prev => {
@@ -588,11 +645,11 @@ const App: React.FC = () => {
           return next;
         });
         setHasUnsavedChanges(false);
-        
+
         // Hiển thị thông báo thành công
         setSaveSuccess({ show: true, isUpdate: isExisting });
         setTimeout(() => setSaveSuccess({ show: false, isUpdate: false }), 3000);
-        
+
         logToServer(`${user.name}-${user.id}-${user.email}`, operation, 'trạng thái(thành công)', `Concept "${newConcept.concept_name_vn || newConcept.concept_name_en}" đã được ${isExisting ? 'cập nhật' : 'lưu'} vào Drive`);
       } else {
         throw new Error(result.message || 'Lỗi lưu concept');
@@ -616,14 +673,14 @@ const App: React.FC = () => {
 
   const handleUpdateConcept = (updatedConcept: Concept) => {
     if (!user) return;
-    
+
     logToServer(`${user.name}-${user.id}-${user.email}`, 'Cập nhật concept', 'bắt đầu thực hiện');
-    
+
     // Cập nhật local state để theo dõi thay đổi (KHÔNG cập nhật savedConcepts ngay)
     setLocalCollectionState(prev => {
       const next = new Map<string, Concept>(prev);
       next.set(updatedConcept.id, updatedConcept);
-      
+
       // Kiểm tra xem có thay đổi chưa lưu không (so sánh với baseline)
       const baselineConcept = baselineCollectionState.get(updatedConcept.id);
       if (baselineConcept) {
@@ -651,48 +708,48 @@ const App: React.FC = () => {
         });
         setHasUnsavedChanges(otherHasChanges);
       }
-      
+
       return next;
     });
-    
+
     // Cập nhật savedConcepts và localStorage để hiển thị UI (nhưng vẫn giữ baseline để so sánh)
     const newCollection = savedConcepts.map(c => c.id === updatedConcept.id ? updatedConcept : c);
     setSavedConcepts(newCollection);
     localStorage.setItem('fashionAI_savedConcepts', JSON.stringify(newCollection));
-    
+
     logToServer(`${user.name}-${user.id}-${user.email}`, 'Cập nhật concept', 'trạng thái(thành công)', `Concept "${updatedConcept.concept_name_vn || updatedConcept.concept_name_en}" đã được cập nhật (chưa lưu vào Drive)`);
   };
-  
+
   // Hàm kiểm tra xem một concept có thay đổi so với baseline không
   const hasConceptChanged = (baseline: Concept, current: Concept): boolean => {
     if (!baseline.poses || !current.poses) return false;
-    
+
     for (let i = 0; i < current.poses.length; i++) {
       const currentPose = current.poses[i];
       const baselinePose = baseline.poses[i];
-      
+
       if (!baselinePose) continue;
-      
+
       // Kiểm tra generated_image mới
       if (currentPose.generated_image && currentPose.generated_image !== baselinePose.generated_image) {
         return true;
       }
-      
+
       // Kiểm tra prompt đã thay đổi
       if (currentPose.pose_prompt !== baselinePose.pose_prompt) {
         return true;
       }
-      
+
       // Kiểm tra lock states đã thay đổi
-      if (currentPose.is_face_locked !== baselinePose.is_face_locked || 
-          currentPose.is_outfit_locked !== baselinePose.is_outfit_locked) {
+      if (currentPose.is_face_locked !== baselinePose.is_face_locked ||
+        currentPose.is_outfit_locked !== baselinePose.is_outfit_locked) {
         return true;
       }
     }
-    
+
     return false;
   };
-  
+
   // Hàm kiểm tra các concept khác có thay đổi không
   const checkOtherConceptsHaveChanges = (localState: Map<string, Concept>): boolean => {
     let hasChanges = false;
@@ -704,14 +761,14 @@ const App: React.FC = () => {
     });
     return hasChanges;
   };
-  
+
   // Hàm kiểm tra xem có dữ liệu chưa lưu không (so sánh với baseline)
   const checkUnsavedChanges = () => {
     const hasChanges = checkOtherConceptsHaveChanges(localCollectionState);
     setHasUnsavedChanges(hasChanges);
     return hasChanges;
   };
-  
+
   // Hàm xử lý khi người dùng muốn thực hiện action có thể mất dữ liệu
   const handlePendingAction = (action: () => void, source: 'studio' | 'collection' = 'collection') => {
     const hasChanges = source === 'studio' ? hasUnsavedStudioChanges : hasUnsavedChanges;
@@ -719,7 +776,7 @@ const App: React.FC = () => {
     const isLoadingInCollection = source === 'collection' && loadingCollection;
     // Kiểm tra xem có ConceptCard nào đang xử lý không
     const isProcessingInCollection = source === 'collection' && processingConcepts.size > 0;
-    
+
     if (isLoadingInCollection || isProcessingInCollection || hasChanges) {
       setUnsavedWarningSource(source);
       setPendingAction(() => action);
@@ -728,11 +785,11 @@ const App: React.FC = () => {
       action();
     }
   };
-  
+
   // Hàm xác nhận bỏ qua cảnh báo và thực hiện action
   const confirmDiscardChanges = () => {
     setShowUnsavedWarning(false);
-    
+
     if (unsavedWarningSource === 'studio') {
       // Reset Studio state
       setHasUnsavedStudioChanges(false);
@@ -762,29 +819,29 @@ const App: React.FC = () => {
       });
       setSavedConcepts(resetConcepts);
     }
-    
+
     if (pendingAction) {
       pendingAction();
       setPendingAction(null);
     }
   };
-  
+
   // Hàm hủy bỏ action
   const cancelPendingAction = () => {
     setShowUnsavedWarning(false);
     setPendingAction(null);
   };
-  
+
   // Thêm beforeunload handler để cảnh báo khi đóng tab/tải lại trang
   useEffect(() => {
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
       // Chỉ không cảnh báo khi: đã tải xong data driver (collectionLoaded === true) và không có unsaved changes và không có ConceptCard đang xử lý
       const shouldSkipWarning = activeTab === 'collection' && !loadingCollection && collectionLoaded && !hasUnsavedChanges && processingConcepts.size === 0;
-      
+
       if (shouldSkipWarning) {
         return;
       }
-      
+
       // Cảnh báo nếu đang load, đang xử lý, hoặc có unsaved changes
       if ((activeTab === 'collection' && (loadingCollection || processingConcepts.size > 0)) || hasUnsavedChanges || hasUnsavedStudioChanges) {
         e.preventDefault();
@@ -792,9 +849,9 @@ const App: React.FC = () => {
         return ''; // Some browsers require return value
       }
     };
-    
+
     window.addEventListener('beforeunload', handleBeforeUnload);
-    
+
     return () => {
       window.removeEventListener('beforeunload', handleBeforeUnload);
     };
@@ -805,11 +862,11 @@ const App: React.FC = () => {
     const handlePopState = (e: PopStateEvent) => {
       // Chỉ không cảnh báo khi: đã tải xong data driver (collectionLoaded === true) và không có unsaved changes và không có ConceptCard đang xử lý
       const shouldSkipWarning = activeTab === 'collection' && !loadingCollection && collectionLoaded && !hasUnsavedChanges && processingConcepts.size === 0;
-      
+
       if (shouldSkipWarning) {
         return;
       }
-      
+
       // Cảnh báo nếu đang load, đang xử lý, hoặc có unsaved changes
       if ((activeTab === 'collection' && (loadingCollection || processingConcepts.size > 0)) || hasUnsavedChanges || hasUnsavedStudioChanges) {
         // Hiển thị cảnh báo và ngăn chặn navigation
@@ -820,7 +877,7 @@ const App: React.FC = () => {
               : 'Bạn có dữ liệu chưa được lưu trong Studio. Nếu tiếp tục, tất cả các thay đổi chưa lưu sẽ bị mất. Bạn có chắc chắn muốn tiếp tục?'
             : 'Bạn có dữ liệu chưa được lưu trong Bộ sưu tập. Nếu tiếp tục, tất cả các thay đổi chưa lưu sẽ bị mất. Bạn có chắc chắn muốn tiếp tục?'
         );
-        
+
         if (!confirmed) {
           // Ngăn chặn navigation bằng cách push lại state hiện tại
           window.history.pushState(null, '', window.location.href);
@@ -854,16 +911,16 @@ const App: React.FC = () => {
         }
       }
     };
-    
+
     // Push state ban đầu để có thể detect back/forward
     window.history.pushState(null, '', window.location.href);
     window.addEventListener('popstate', handlePopState);
-    
+
     return () => {
       window.removeEventListener('popstate', handlePopState);
     };
   }, [hasUnsavedChanges, hasUnsavedStudioChanges, loadingCollection, collectionLoaded, activeTab, processingConcepts, unsavedWarningSource, loading.status, baselineCollectionState]);
-  
+
   // Kiểm tra unsaved changes khi localCollectionState thay đổi
   useEffect(() => {
     if (activeTab === 'collection' && localCollectionState.size > 0) {
@@ -878,10 +935,10 @@ const App: React.FC = () => {
       // 1. Có input (productImages, faceReference, fabricReference, customDescription)
       // 2. Hoặc có data (concepts đã generate) nhưng chưa lưu vào collection
       // 3. Hoặc đang trong quá trình xử lý (analyzing)
-      const hasInput = input.productImages.length > 0 || 
-                       input.faceReference.data !== null || 
-                       input.fabricReference.data !== null || 
-                       input.customDescription.trim() !== '';
+      const hasInput = input.productImages.length > 0 ||
+        input.faceReference.data !== null ||
+        input.fabricReference.data !== null ||
+        input.customDescription.trim() !== '';
       const hasData = data !== null;
       const isProcessing = loading.status === 'analyzing';
       setHasUnsavedStudioChanges(hasInput || hasData || isProcessing);
@@ -896,14 +953,14 @@ const App: React.FC = () => {
       alert("Đang trong quá trình tải dữ liệu. Vui lòng đợi hoàn tất rồi thử lại sau.");
       return;
     }
-    
+
     // Tìm concept để lấy tên hiển thị trong dialog
     const concept = savedConcepts.find(c => c.id === id);
     if (concept) {
-      setShowDeleteConfirm({ 
-        show: true, 
-        conceptId: id, 
-        conceptName: concept.concept_name_vn || concept.concept_name_en || 'Concept này' 
+      setShowDeleteConfirm({
+        show: true,
+        conceptId: id,
+        conceptName: concept.concept_name_vn || concept.concept_name_en || 'Concept này'
       });
     }
   };
@@ -936,16 +993,16 @@ const App: React.FC = () => {
       });
 
       const result = await response.json();
-      
+
       if (result.success) {
         // Cập nhật giao diện sau khi xóa thành công
         const newCollection = savedConcepts.filter(c => c.id !== conceptIdToDelete);
         setSavedConcepts(newCollection);
-        
+
         // Hiển thị thông báo thành công
         setDeleteSuccess(true);
         setTimeout(() => setDeleteSuccess(false), 3000);
-        
+
         logToServer(`${user.name}-${user.id}-${user.email}`, 'Xóa concept', 'trạng thái(thành công)', `Concept "${conceptName}" và tất cả ảnh liên quan đã được xóa từ Drive`);
       } else {
         throw new Error(result.message || 'Lỗi xóa concept');
@@ -991,13 +1048,13 @@ const App: React.FC = () => {
 
   const handleClearAll = () => {
     // Kiểm tra nếu có dữ liệu cần cảnh báo
-    const hasData = data !== null || 
-                    input.productImages.length > 0 || 
-                    input.faceReference.data !== null || 
-                    input.fabricReference.data !== null || 
-                    input.customDescription.trim() !== '' ||
-                    loading.status === 'analyzing';
-    
+    const hasData = data !== null ||
+      input.productImages.length > 0 ||
+      input.faceReference.data !== null ||
+      input.fabricReference.data !== null ||
+      input.customDescription.trim() !== '' ||
+      loading.status === 'analyzing';
+
     if (hasData) {
       handlePendingAction(() => {
         // Reset tất cả state về trạng thái ban đầu
@@ -1055,7 +1112,7 @@ const App: React.FC = () => {
           <div className="flex items-center cursor-pointer" onClick={() => {
             // Chỉ không cảnh báo khi: đã tải xong data driver (collectionLoaded === true) và không có unsaved changes và không có ConceptCard đang xử lý
             const shouldSkipWarning = activeTab === 'collection' && !loadingCollection && collectionLoaded && !hasUnsavedChanges && processingConcepts.size === 0;
-            
+
             if (shouldSkipWarning) {
               setActiveTab('studio');
             } else if (activeTab === 'collection' && (hasUnsavedChanges || loadingCollection || processingConcepts.size > 0)) {
@@ -1068,8 +1125,8 @@ const App: React.FC = () => {
           }}>
             <AtheaLogo />
             <div className="flex flex-col leading-none">
-               <h1 className="font-serif text-lg font-bold tracking-tight">Giám Đốc Sáng Tạo</h1>
-               <span className="text-fashion-accent text-[10px] font-bold uppercase tracking-[0.3em]">ATHEA</span>
+              <h1 className="font-serif text-lg font-bold tracking-tight">Giám Đốc Sáng Tạo</h1>
+              <span className="text-fashion-accent text-[10px] font-bold uppercase tracking-[0.3em]">ATHEA</span>
             </div>
           </div>
           <div className="flex items-center gap-4">
@@ -1077,7 +1134,7 @@ const App: React.FC = () => {
               <button onClick={() => {
                 // Chỉ không cảnh báo khi: đã tải xong data driver (collectionLoaded === true) và không có unsaved changes và không có ConceptCard đang xử lý
                 const shouldSkipWarning = activeTab === 'collection' && !loadingCollection && collectionLoaded && !hasUnsavedChanges && processingConcepts.size === 0;
-                
+
                 if (shouldSkipWarning) {
                   setActiveTab('studio');
                 } else if (activeTab === 'collection' && (hasUnsavedChanges || loadingCollection || processingConcepts.size > 0)) {
@@ -1097,7 +1154,7 @@ const App: React.FC = () => {
             </nav>
             <div className="flex items-center gap-3 border-l border-gray-200 pl-4">
               <span className="hidden md:inline text-xs text-gray-600 font-medium">{user.name}</span>
-              <button 
+              <button
                 onClick={handleLogout}
                 className="flex items-center gap-2 text-xs text-gray-500 hover:text-gray-900 transition-colors px-3 py-1.5 rounded-lg hover:bg-gray-100"
               >
@@ -1132,12 +1189,12 @@ const App: React.FC = () => {
                       ))}
                       {input.productImages.length < 4 && (
                         <div className="aspect-square">
-                          <ImageUploader 
+                          <ImageUploader
                             key={`product-uploader-${input.productImages.length}`}
-                            label="Thêm góc" 
-                            variant="compact" 
-                            onImageSelect={handleAddProductImage} 
-                            onClear={() => {}} 
+                            label="Thêm góc"
+                            variant="compact"
+                            onImageSelect={handleAddProductImage}
+                            onClear={() => { }}
                           />
                         </div>
                       )}
@@ -1147,7 +1204,7 @@ const App: React.FC = () => {
                   <div className="grid grid-cols-1 gap-3 border-t border-gray-50 pt-4">
                     <div className="space-y-2">
                       <label className="text-[10px] font-bold uppercase text-gray-500 flex items-center gap-1"><UserCheck size={12} /> Gương mặt mẫu</label>
-                      <ImageUploader label="Tải lên Face Ref" variant="compact" currentPreview={previews.face} onImageSelect={(d, m, u) => { setInput(p => ({...p, faceReference: {data: d, mimeType: m}})); setPreviews(v => ({...v, face: u})); }} onClear={() => { setInput(p => ({...p, faceReference: {data: null, mimeType: null}})); setPreviews(v => ({...v, face: null})); }} />
+                      <ImageUploader label="Tải lên Face Ref" variant="compact" currentPreview={previews.face} onImageSelect={(d, m, u) => { setInput(p => ({ ...p, faceReference: { data: d, mimeType: m } })); setPreviews(v => ({ ...v, face: u })); }} onClear={() => { setInput(p => ({ ...p, faceReference: { data: null, mimeType: null } })); setPreviews(v => ({ ...v, face: null })); }} />
                     </div>
 
                     {/* <div className="space-y-2 border-t border-gray-50 pt-3">
@@ -1168,7 +1225,7 @@ const App: React.FC = () => {
                 </div> */}
 
                 <div className="mb-6">
-                  <button onClick={() => setInput(prev => ({...prev, lock_lighting: !prev.lock_lighting}))} className={`w-full flex items-center justify-between p-3 rounded-xl border transition-all ${input.lock_lighting ? 'bg-fashion-accent/5 border-fashion-accent/30' : 'bg-gray-50 border-gray-200'}`}>
+                  <button onClick={() => setInput(prev => ({ ...prev, lock_lighting: !prev.lock_lighting }))} className={`w-full flex items-center justify-between p-3 rounded-xl border transition-all ${input.lock_lighting ? 'bg-fashion-accent/5 border-fashion-accent/30' : 'bg-gray-50 border-gray-200'}`}>
                     <div className="flex items-center gap-2"><div className={`p-1.5 rounded-lg ${input.lock_lighting ? 'bg-fashion-accent text-white' : 'bg-gray-200'}`}>{input.lock_lighting ? <Zap size={14} /> : <ZapOff size={14} />}</div><div className="text-left"><div className="text-xs font-bold uppercase">Khóa ánh sáng</div><div className="text-[10px] text-gray-400">Giữ đồng bộ tone màu</div></div></div>
                   </button>
                 </div>
@@ -1186,15 +1243,13 @@ const App: React.FC = () => {
                         <button
                           key={scene.id}
                           onClick={() => setSelectedSceneId(scene.id)}
-                          className={`flex-shrink-0 w-[140px] snap-start text-left p-3 rounded-xl border transition-all relative overflow-hidden group ${
-                            isActive 
-                              ? 'border-fashion-accent bg-fashion-accent/5 shadow-md scale-[1.02]' 
+                          className={`flex-shrink-0 w-[140px] snap-start text-left p-3 rounded-xl border transition-all relative overflow-hidden group ${isActive
+                              ? 'border-fashion-accent bg-fashion-accent/5 shadow-md scale-[1.02]'
                               : 'border-gray-100 bg-white hover:border-gray-300'
-                          }`}
+                            }`}
                         >
-                          <div className={`w-8 h-8 rounded-lg flex items-center justify-center mb-3 transition-colors ${
-                            isActive ? 'bg-fashion-accent text-white' : 'bg-gray-100 text-gray-400'
-                          }`}>
+                          <div className={`w-8 h-8 rounded-lg flex items-center justify-center mb-3 transition-colors ${isActive ? 'bg-fashion-accent text-white' : 'bg-gray-100 text-gray-400'
+                            }`}>
                             <Icon size={16} />
                           </div>
                           <div className="space-y-1">
@@ -1240,24 +1295,24 @@ const App: React.FC = () => {
                   <p className="text-sm text-red-700 font-medium">{loading.message}</p>
                 </div>
               )}
-              
+
               {!data && loading.status === 'idle' && (
-                 <div className="flex flex-col items-center justify-center h-[600px] text-center opacity-40">
-                    <div className="w-24 h-24 bg-gray-200 rounded-full mb-6 flex items-center justify-center border-2 border-black">
-                      <div className="flex flex-col items-center leading-none">
-                        <span className="font-serif text-3xl font-bold">T</span>
-                        <span className="font-serif text-3xl italic -mt-2 ml-4">A</span>
-                      </div>
+                <div className="flex flex-col items-center justify-center h-[600px] text-center opacity-40">
+                  <div className="w-24 h-24 bg-gray-200 rounded-full mb-6 flex items-center justify-center border-2 border-black">
+                    <div className="flex flex-col items-center leading-none">
+                      <span className="font-serif text-3xl font-bold">T</span>
+                      <span className="font-serif text-3xl italic -mt-2 ml-4">A</span>
                     </div>
-                    <h3 className="font-serif text-3xl text-gray-800 mb-2">ATHEA Creative Studio</h3>
-                    <p className="max-w-md text-gray-500">Tải lên tối đa 4 ảnh sản phẩm để AI thương hiệu ATHEA phân tích mọi góc độ chi tiết.</p>
-                 </div>
+                  </div>
+                  <h3 className="font-serif text-3xl text-gray-800 mb-2">ATHEA Creative Studio</h3>
+                  <p className="max-w-md text-gray-500">Tải lên tối đa 4 ảnh sản phẩm để AI thương hiệu ATHEA phân tích mọi góc độ chi tiết.</p>
+                </div>
               )}
               {loading.status === 'analyzing' && !data && (
-                 <div className="flex flex-col items-center justify-center h-[600px] text-center animate-pulse">
-                    <div className="w-16 h-16 border-4 border-fashion-accent border-t-transparent rounded-full animate-spin mb-6"></div>
-                    <h3 className="font-serif text-2xl text-gray-800">{loading.message}</h3>
-                 </div>
+                <div className="flex flex-col items-center justify-center h-[600px] text-center animate-pulse">
+                  <div className="w-16 h-16 border-4 border-fashion-accent border-t-transparent rounded-full animate-spin mb-6"></div>
+                  <h3 className="font-serif text-2xl text-gray-800">{loading.message}</h3>
+                </div>
               )}
               {data && (
                 <div className="space-y-8 animate-fade-in pb-20">
@@ -1294,18 +1349,18 @@ const App: React.FC = () => {
                   // LUÔN dùng input từ concept đã lưu (đã được restore từ Drive)
                   // Không fallback về input từ state vì state có thể bị reset khi load lại trang
                   const conceptUserInput = (concept as any).input;
-                  
+
                   // Ưu tiên dùng input từ concept, fallback về input từ state nếu cần
                   // ConceptCard sẽ tự kiểm tra và hiển thị thông báo nếu không có input hợp lệ
                   const finalUserInput = conceptUserInput || input;
-                  
-                  return <ConceptCard 
-                    key={concept.id} 
-                    concept={concept} 
-                    index={index} 
-                    userInput={finalUserInput} 
-                    onSave={handleSaveConcept} 
-                    onRemove={handleRemoveConcept} 
+
+                  return <ConceptCard
+                    key={concept.id}
+                    concept={concept}
+                    index={index}
+                    userInput={finalUserInput}
+                    onSave={handleSaveConcept}
+                    onRemove={handleRemoveConcept}
                     onUpdate={(updatedConcept) => {
                       handleUpdateConcept(updatedConcept);
                       // Cập nhật local state để theo dõi thay đổi
@@ -1314,9 +1369,9 @@ const App: React.FC = () => {
                         next.set(updatedConcept.id, updatedConcept);
                         return next;
                       });
-                    }} 
-                    userId={(user as any)?.id} 
-                    isLoadingCollection={loadingCollection} 
+                    }}
+                    userId={(user as any)?.id}
+                    isLoadingCollection={loadingCollection}
                     isSaved={true}
                     onProcessingChange={(isProcessing) => {
                       setProcessingConcepts(prev => {
@@ -1345,7 +1400,7 @@ const App: React.FC = () => {
               {showSaveConfirm.isUpdate ? "Xác nhận cập nhật Concept" : "Xác nhận lưu Concept"}
             </h3>
             <p className="text-gray-600 mb-6">
-              {showSaveConfirm.isUpdate 
+              {showSaveConfirm.isUpdate
                 ? <>Bạn có chắc chắn muốn cập nhật concept <strong>"{showSaveConfirm.concept.concept_name_vn}"</strong>? Các thay đổi sẽ được lưu vào bộ sưu tập.</>
                 : <>Bạn có chắc chắn muốn lưu concept <strong>"{showSaveConfirm.concept.concept_name_vn}"</strong> vào bộ sưu tập?</>}
             </p>
@@ -1401,7 +1456,7 @@ const App: React.FC = () => {
                   Cảnh báo: Dữ liệu chưa lưu
                 </h3>
                 <p className="text-gray-600 text-sm leading-relaxed">
-                  {unsavedWarningSource === 'studio' 
+                  {unsavedWarningSource === 'studio'
                     ? loading.status === 'analyzing'
                       ? 'Hệ thống đang xử lý phân tích concept. Nếu tiếp tục, quá trình xử lý sẽ bị hủy và dữ liệu có thể bị mất.'
                       : 'Bạn có dữ liệu chưa được lưu trong Studio. Nếu tiếp tục, tất cả các thay đổi chưa lưu sẽ bị mất.'
@@ -1448,7 +1503,7 @@ const App: React.FC = () => {
           <div>
             <p className="font-bold">{saveSuccess.isUpdate ? "Cập nhật thành công!" : "Lưu thành công!"}</p>
             <p className="text-sm text-white/90">
-              {saveSuccess.isUpdate 
+              {saveSuccess.isUpdate
                 ? "Concept đã được cập nhật trong bộ sưu tập"
                 : "Concept đã được lưu vào bộ sưu tập"}
             </p>
