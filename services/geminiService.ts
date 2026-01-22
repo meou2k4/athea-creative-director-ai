@@ -240,8 +240,8 @@ Trả về JSON đúng cấu trúc.
 `;
 
 /**
- * Utility function to handle retries for 429 (Resource Exhausted) errors
- * Optimized for Google Cloud Free Tier usage
+ * Enhanced retry function based on best practices from quality-focused implementation
+ * Handles various error types with intelligent backoff strategies
  */
 async function callWithRetry<T>(fn: () => Promise<T>, maxRetries = 8): Promise<T> {
   let lastError: any;
@@ -251,16 +251,28 @@ async function callWithRetry<T>(fn: () => Promise<T>, maxRetries = 8): Promise<T
     } catch (error: any) {
       lastError = error;
       const errorMessage = error.message || "";
+
+      // Comprehensive error detection
       const isQuotaError = errorMessage.includes("429") ||
                           errorMessage.includes("RESOURCE_EXHAUSTED") ||
                           errorMessage.includes("quota") ||
                           errorMessage.includes("RATE_LIMIT");
 
-      if (isQuotaError && i < maxRetries - 1) {
-        // Aggressive backoff for quota errors: 10s, 20s, 40s, 80s, 160s, 320s, 640s
-        // This helps avoid hitting quota limits while staying under free tier
-        const waitTime = Math.pow(2, i + 3) * 1000 + Math.random() * 5000; // Add jitter
-        console.warn(`[QUOTA] Rate limit hit. Waiting ${Math.round(waitTime/1000)}s before retry ${i + 1}/${maxRetries}`);
+      const isRetryableError = isQuotaError ||
+                              errorMessage.includes('not found') ||
+                              errorMessage.includes('not available') ||
+                              errorMessage.includes('404') ||
+                              errorMessage.includes('timeout') ||
+                              errorMessage.includes('internal') ||
+                              errorMessage.includes('SERVICE_UNAVAILABLE');
+
+      if (isRetryableError && i < maxRetries - 1) {
+        // Smart backoff: aggressive for quota, moderate for others
+        const baseWaitTime = isQuotaError ? Math.pow(2, i + 3) * 1000 : Math.pow(2, i) * 1000;
+        const waitTime = baseWaitTime + Math.random() * 2000; // Add jitter
+
+        const errorType = isQuotaError ? '[QUOTA]' : '[RETRYABLE]';
+        console.warn(`${errorType} ${errorMessage}. Waiting ${Math.round(waitTime/1000)}s before retry ${i + 1}/${maxRetries}`);
         await new Promise(resolve => setTimeout(resolve, waitTime));
         continue;
       }
@@ -560,21 +572,56 @@ export const generateFashionImage = async (
     let technicalPrompt = prompt;
     try {
       const json = JSON.parse(prompt);
-      technicalPrompt = `Create a high fashion editorial photo. 
-        Subject Identity: ${json.subject_lock}. 
-        Outfit & Details: ${json.outfit_anchor}. 
-        Pose & Camera: ${json.pose_and_framing}. 
-        Environment: ${json.environment || 'Luxurious'}. 
-        Lighting: ${json.lighting_and_camera}.
-        STRICT: Keep the face from the face reference image and the outfit details from ALL product images exactly as shown.`;
-    } catch (e) {}
+      // Enhanced technical prompt structure based on quality-focused implementation
+      technicalPrompt = `Create a high fashion editorial photo with MASTER PROFILE quality standards.
 
-    // Thêm yêu cầu chất lượng cao vào prompt — yêu cầu rõ ràng trả về inline image (PNG) ở full resolution
-    const highQualityPrompt = `Generate a HIGH RESOLUTION fashion photograph with exceptional detail and quality at 1536x2048 pixels (3:4 aspect ratio).
-    IMPORTANT (API RESPONSE REQUIREMENT): Return the full-resolution image as inline base64 image data (PNG) in the response parts, not only a text description or thumbnail.
-    DO NOT downscale or compress the image. Output must be exactly 1536x2048 pixels with maximum photographic detail and ultra-high quality.
-    Use ultra-high detail, professional photography standards, natural skin texture, and fabric micro-detail.
-    Response format requirement: include an inlineData part with mimeType 'image/png' and the full base64 image payload.
+        SUBJECT IDENTITY & LOCK: ${json.subject_lock || 'Professional model with consistent face and proportions'}
+
+        OUTFIT & FABRIC DETAILS: ${json.outfit_anchor || 'Premium fashion garment with exact fabric texture and design'}
+
+        POSE & FRAMING: ${json.pose_and_framing || 'Elegant editorial pose with professional composition'}
+
+        ENVIRONMENT: ${json.environment || 'Luxurious setting complementing the outfit'}
+
+        LIGHTING & CAMERA: ${json.lighting_and_camera || 'Natural daylight, 45-degree side lighting, large aperture'}
+
+        QUALITY REQUIREMENTS:
+        - MASTER PROFILE: Natural daylight, warm-neutral color grade, photorealistic high-end editorial quality
+        - MATERIAL PROFILE: Premium fabric texture, refined micro-texture, expensive feel
+        - CAMERA PROFILE: 50mm–85mm equivalent look, professional fashion photography aesthetic
+        - RESOLUTION: Ultra-high detail at 1536x2048 pixels (3:4 aspect ratio)
+
+        STRICT IDENTITY LOCK: Keep the face from the face reference image and the outfit details from ALL product images exactly as shown.`;
+    } catch (e) {
+      // If not JSON, enhance the plain text prompt with quality standards
+      technicalPrompt = `Create a high fashion editorial photo with MASTER PROFILE quality standards.
+
+        ${prompt}
+
+        QUALITY REQUIREMENTS:
+        - MASTER PROFILE: Natural daylight, warm-neutral color grade, photorealistic high-end editorial quality
+        - MATERIAL PROFILE: Premium fabric texture, refined micro-texture, expensive feel
+        - CAMERA PROFILE: 50mm–85mm equivalent look, professional fashion photography aesthetic
+        - RESOLUTION: Ultra-high detail at 1536x2048 pixels (3:4 aspect ratio)
+
+        STRICT: Keep the face from the face reference image and the outfit details from ALL product images exactly as shown.`;
+    }
+
+    // Enhanced high-quality prompt based on quality-focused implementation
+    const highQualityPrompt = `Generate a MASTER PROFILE fashion photograph with exceptional editorial quality at 1536x2048 pixels (3:4 aspect ratio).
+
+    CRITICAL QUALITY REQUIREMENTS:
+    - MASTER LIGHTING: Natural daylight only, soft morning/afternoon golden hour, side lighting 45-degree, very soft diffused shadows
+    - MATERIAL RENDERING: Premium fabric texture, refined micro-texture, warm ivory lace (not cold grey), expensive feel
+    - CAMERA OPTICS: 50mm–85mm equivalent look, natural perspective, professional fashion photography aesthetic
+    - RESOLUTION: Ultra-high detail at exactly 1536x2048 pixels with maximum photographic quality
+
+    API RESPONSE REQUIREMENT:
+    - Return the FULL-RESOLUTION image as inline base64 image data (PNG) in response parts
+    - DO NOT return text description, thumbnail, or compressed image
+    - Output MUST be exactly 1536x2048 pixels with ultra-high quality and detail
+    - Response format: include inlineData part with mimeType 'image/png' and complete base64 payload
+
     ${technicalPrompt}`;
 
     parts.push({ text: highQualityPrompt });
@@ -593,7 +640,8 @@ export const generateFashionImage = async (
           contents: { parts },
           config: {
             imageConfig: {
-              aspectRatio: "3:4"
+              aspectRatio: "3:4",
+              imageSize: "2K"
             }
           }
         });
@@ -677,11 +725,20 @@ export const refineFashionImage = async (
     let response;
     let lastError: any;
 
-    // Thêm yêu cầu chất lượng cao cho refine — yêu cầu rõ ràng trả về inline image (PNG) ở full resolution
-    const highQualityRefinePrompt = `Refine this fashion photograph while keeping the model and clothing exactly the same at 1536x2048 pixels (3:4 aspect ratio).
-    IMPORTANT (API RESPONSE REQUIREMENT): Return the refined image as inline base64 image data (PNG) in the response parts, do NOT return only text or a thumbnail.
-    DO NOT downscale or compress the image. Output must be exactly 1536x2048 pixels with maximum resolution and ultra-high detail quality.
-    Ensure output includes an inlineData part with mimeType 'image/png' and the full base64 image payload.
+    // Enhanced refine prompt based on quality-focused implementation
+    const highQualityRefinePrompt = `Refine this MASTER PROFILE fashion photograph while keeping the model and clothing exactly the same at 1536x2048 pixels (3:4 aspect ratio).
+
+    CRITICAL REQUIREMENTS:
+    - MAINTAIN: Exact same model face, body proportions, and outfit details from reference images
+    - QUALITY: MASTER PROFILE standards - natural daylight, premium fabric texture, professional optics
+    - RESOLUTION: Ultra-high detail at exactly 1536x2048 pixels with maximum photographic quality
+
+    API RESPONSE REQUIREMENT:
+    - Return the FULL-RESOLUTION refined image as inline base64 image data (PNG) in response parts
+    - DO NOT return text description, thumbnail, or compressed image
+    - Output MUST be exactly 1536x2048 pixels with ultra-high quality and detail
+    - Response format: include inlineData part with mimeType 'image/png' and complete base64 payload
+
     Task: ${instruction}.`;
 
     // Retry với exponential backoff: 2s, 4s, 8s, 16s, 32s, 64s (tổng 6 lần)
@@ -699,7 +756,8 @@ export const refineFashionImage = async (
           },
           config: {
             imageConfig: {
-              aspectRatio: "3:4"
+              aspectRatio: "3:4",
+              imageSize: "2K"
             }
           }
         });

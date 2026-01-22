@@ -38,15 +38,29 @@ ATHEA là công cụ AI Giám Đốc Sáng Tạo chuyên nghiệp, hỗ trợ t�
   - Log chỉ hiển thị ở server console (không hiển thị cho người dùng)
   - Frontend chỉ hiển thị lỗi nghiêm trọng (console.error) nếu có
 
-### 🤖 AI Model Selection
-- **Text Generation (Content Creation)**: 
+### 🤖 AI Model Selection & Quality Standards
+- **Text Generation (Content Creation)**:
   - Model: `gemini-2.5-flash` (001) - Stable version
   - Đặc điểm: Nhanh, 1M input tokens, 65K output tokens, hỗ trợ thinking mode, multimodal
-- **Image Generation**: 
+
+- **Image Generation**:
   - Primary: `gemini-3-pro-image-preview` (Nano Banana Pro) - Preview với chất lượng cao
   - Fallback: `gemini-2.5-flash-image` (Nano Banana) - Stable version
   - Tự động fallback về stable model nếu preview không available
   - Hỗ trợ thinking mode, input capacity cao (131K tokens)
+
+- **Quality Configuration**:
+  - Resolution: **2K (1536x2048)** pixels với aspect ratio 3:4
+  - Color: Warm-neutral editorial palette, clean whites, realistic skin texture
+  - Lighting: Natural daylight only, side lighting 45-degree, soft diffused shadows
+  - Material: Premium fabric texture, refined micro-texture, expensive feel
+  - Camera: 50mm–85mm equivalent look, professional fashion photography aesthetic
+
+- **Enhanced Retry & Reliability**:
+  - Smart retry logic cho quota errors và temporary failures
+  - Exponential backoff với jitter để tránh burst limits
+  - Comprehensive error detection (404, 429, timeout, internal errors)
+  - Improved prompt structure với MASTER PROFILE standards
 
 ## 🚀 Demo
 
@@ -278,6 +292,29 @@ Xem chi tiết trong file `DEPLOY_INSTRUCTIONS.md`
    - Xác nhận xóa
    - Concept và tất cả ảnh liên quan sẽ bị xóa khỏi Google Drive
 
+## 🎨 Quality Standards & Technical Improvements
+
+### MASTER PHOTO PROFILE (Global Standards)
+Hệ thống sử dụng bộ tiêu chuẩn chất lượng toàn cầu để đảm bảo tính nhất quán:
+
+- **MASTER LIGHTING PROFILE**: Natural daylight, soft morning/afternoon, side lighting 45-degree
+- **MATERIAL PROFILE**: Premium fabric texture, refined micro-texture, warm ivory lace
+- **SCENE GUARDRAILS**: Environment complements outfit, neutral palettes, no visual noise
+- **CAMERA PROFILE**: 50mm–85mm equivalent look, professional fashion photography aesthetic
+
+### Technical Enhancements (Latest Update)
+- **Enhanced Image Configuration**: Explicit `imageSize: "2K"` trong API config cho resolution consistency
+- **Smart Retry Logic**: Improved error handling với exponential backoff và jitter
+- **Structured Technical Prompts**: JSON-based prompt parsing với MASTER PROFILE standards
+- **Quality Assurance**: Comprehensive API response requirements cho ultra-high quality output
+
+### Quality Inspiration & Learning
+Hệ thống đã được cải thiện bằng cách học hỏi best practices từ implementation chất lượng cao:
+- **Resolution Consistency**: Luôn sử dụng 2K (1536x2048) pixels bất kể source code
+- **Color Accuracy**: Warm-neutral palette được duy trì chính xác
+- **Detail Quality**: Editorial standards cao cấp không thay đổi
+- **Processing Excellence**: Enhanced error handling và prompt structure
+
 ## 🎨 Preset Scenes
 
 Hệ thống có 15+ preset scenes được thiết kế sẵn:
@@ -308,7 +345,7 @@ athea-creative-director-ai/
 │   ├── Button.tsx
 │   └── RefineImageModal.tsx
 ├── services/               # API services
-│   └── geminiService.ts    # Gemini AI service (model selection + fallback)
+│   └── geminiService.ts    # Enhanced Gemini AI service (quality-focused with MASTER PROFILE standards)
 ├── utils/                  # Utility functions
 │   └── api.ts             # API URL helper
 ├── server.js              # Express backend server
@@ -403,11 +440,17 @@ Hệ thống có hệ thống logging chi tiết để theo dõi tiến trình h
   - Tự động fallback về stable model nếu preview không available
   - Đảm bảo không bị nghẽn hoặc sập hệ thống
 
-**Cơ chế fallback:**
-- Hệ thống tự động thử model preview trước
-- Nếu preview không available (404, not found), tự động chuyển sang stable model
-- Log cảnh báo khi fallback xảy ra
-- Đảm bảo tính ổn định và reliability
+**Quality Configuration:**
+- **Resolution**: 2K (1536x2048) pixels với aspect ratio 3:4
+- **Image Size**: Explicit `imageSize: "2K"` trong API config
+- **Color Standards**: Warm-neutral editorial palette
+- **Technical Prompts**: Structured JSON parsing với MASTER PROFILE standards
+
+**Enhanced Reliability:**
+- **Smart Retry Logic**: Comprehensive error detection và exponential backoff
+- **Error Types**: Handles 404, 429, timeout, internal errors với different strategies
+- **Jitter Implementation**: Adds randomization để tránh burst limits
+- **Fallback Mechanism**: Seamless transition giữa preview và stable models
 
 ## 🐛 Troubleshooting
 
