@@ -1,21 +1,23 @@
 
 import { GoogleGenAI, Type, Schema } from "@google/genai";
 import { FashionAIResponse, UserInput, ImageRef, Concept, Pose } from "../types";
+import fs from "fs";
+import path from "path";
 
 /**
  * =========================
  * MODEL SELECTION
  * =========================
- * 
+ *
  * TEXT GENERATION (Content Creation):
  * - Model: gemini-2.5-flash (001)
- * - Reason: Stable version, fast response, 1M input tokens, 65K output tokens, 
+ * - Reason: Stable version, fast response, 1M input tokens, 65K output tokens,
  *   supports thinking mode, multimodal (text + images), perfect for fashion concept analysis
- * 
+ *
  * IMAGE GENERATION:
- * - Model: gemini-3-pro-image-preview
- * - Reason: Advanced Gemini image generation model (Nano Banana Pro) for highest quality
- * - Retry: 3 attempts, then fail completely if unavailable
+ * - Model: gemini-3-pro-image-preview (Nano Banana Pro)
+ * - Reason: Advanced Gemini image generation model with highest quality
+ * - Strategy: Aggressive retry with exponential backoff, no fallback to maintain quality
  */
 
 /**
@@ -41,6 +43,105 @@ STRICT IDENTITY & OUTFIT LOCK:
 `;
 
 const GLOBAL_NEGATIVE = "text, watermark, logo, extra fingers, deformed hands, bad anatomy, plastic skin, waxy skin, harsh overhead light, overexposure, blown highlights, oversaturation";
+
+/**
+ * Rate limiting for Google Cloud Free Tier optimization
+ * Gemini API free tier: ~60 requests/minute, ~1000/day
+ */
+class RateLimiter {
+  private lastRequestTime = 0;
+  private requestCount = 0;
+  private minuteStart = Date.now();
+
+  async throttle(): Promise<void> {
+    const now = Date.now();
+    const timeSinceMinuteStart = now - this.minuteStart;
+
+    // Reset counter every minute
+    if (timeSinceMinuteStart > 60000) {
+      this.requestCount = 0;
+      this.minuteStart = now;
+    }
+
+    // Free tier limit: ~60 requests/minute
+    if (this.requestCount >= 50) { // Conservative limit
+      const waitTime = 60000 - timeSinceMinuteStart + 1000; // Wait until next minute + buffer
+      console.log(`[RATE LIMIT] Hit 50 requests/minute limit. Waiting ${Math.round(waitTime/1000)}s`);
+      await new Promise(resolve => setTimeout(resolve, waitTime));
+      this.requestCount = 0;
+      this.minuteStart = Date.now();
+    }
+
+    // Minimum 2 second gap between requests to avoid burst limits
+    const timeSinceLastRequest = now - this.lastRequestTime;
+    if (timeSinceLastRequest < 2000) {
+      const waitTime = 2000 - timeSinceLastRequest;
+      await new Promise(resolve => setTimeout(resolve, waitTime));
+    }
+
+    this.lastRequestTime = Date.now();
+    this.requestCount++;
+  }
+}
+
+const rateLimiter = new RateLimiter();
+
+/**
+ * Free Tier Usage Monitor
+ * Tracks usage to help stay within Google Cloud Free Tier limits
+ */
+class FreeTierMonitor {
+  private startTime = Date.now();
+  private requestCount = 0;
+  private estimatedCost = 0;
+
+  // Gemini pricing estimates (approximate)
+  private readonly PRICING = {
+    'gemini-2.5-flash': 0.0000015, // per token (text)
+    'gemini-3-pro-image-preview': 0.005, // per image (conservative estimate)
+  };
+
+  trackRequest(model: string, isImageGeneration = false): void {
+    this.requestCount++;
+
+    if (isImageGeneration && this.PRICING[model]) {
+      this.estimatedCost += this.PRICING[model];
+    }
+
+    // Log usage stats every 10 requests
+    if (this.requestCount % 10 === 0) {
+      this.logUsageStats();
+    }
+  }
+
+  private logUsageStats(): void {
+    const hoursRunning = (Date.now() - this.startTime) / (1000 * 60 * 60);
+    const requestsPerHour = this.requestCount / hoursRunning;
+
+    console.log(`[FREE TIER MONITOR] ${this.requestCount} requests, ~$${this.estimatedCost.toFixed(4)} spent`);
+    console.log(`[FREE TIER MONITOR] Rate: ${requestsPerHour.toFixed(1)} req/hour`);
+
+    // Warnings
+    if (this.estimatedCost > 250) {
+      console.warn(`[FREE TIER WARNING] Approaching $300 limit: $${this.estimatedCost.toFixed(2)} used`);
+    }
+
+    if (requestsPerHour > 50) {
+      console.warn(`[FREE TIER WARNING] High request rate: ${requestsPerHour.toFixed(1)} req/hour`);
+    }
+  }
+
+  getUsageReport(): { requests: number, estimatedCost: number, hoursRunning: number } {
+    const hoursRunning = (Date.now() - this.startTime) / (1000 * 60 * 60);
+    return {
+      requests: this.requestCount,
+      estimatedCost: this.estimatedCost,
+      hoursRunning
+    };
+  }
+}
+
+const freeTierMonitor = new FreeTierMonitor();
 
 const responseSchema: Schema = {
   type: Type.OBJECT,
@@ -140,8 +241,9 @@ Trả về JSON đúng cấu trúc.
 
 /**
  * Utility function to handle retries for 429 (Resource Exhausted) errors
+ * Optimized for Google Cloud Free Tier usage
  */
-async function callWithRetry<T>(fn: () => Promise<T>, maxRetries = 6): Promise<T> {
+async function callWithRetry<T>(fn: () => Promise<T>, maxRetries = 8): Promise<T> {
   let lastError: any;
   for (let i = 0; i < maxRetries; i++) {
     try {
@@ -149,14 +251,16 @@ async function callWithRetry<T>(fn: () => Promise<T>, maxRetries = 6): Promise<T
     } catch (error: any) {
       lastError = error;
       const errorMessage = error.message || "";
-      const isQuotaError = errorMessage.includes("429") || 
+      const isQuotaError = errorMessage.includes("429") ||
                           errorMessage.includes("RESOURCE_EXHAUSTED") ||
-                          errorMessage.includes("quota");
-      
+                          errorMessage.includes("quota") ||
+                          errorMessage.includes("RATE_LIMIT");
+
       if (isQuotaError && i < maxRetries - 1) {
-        // More robust exponential backoff: 4s, 8s, 16s, 32s...
-        const waitTime = Math.pow(2, i + 2) * 1000 + Math.random() * 2000;
-        console.warn(`Quota exceeded (429). Retrying in ${Math.round(waitTime/1000)}s... (Attempt ${i + 1}/${maxRetries})`);
+        // Aggressive backoff for quota errors: 10s, 20s, 40s, 80s, 160s, 320s, 640s
+        // This helps avoid hitting quota limits while staying under free tier
+        const waitTime = Math.pow(2, i + 3) * 1000 + Math.random() * 5000; // Add jitter
+        console.warn(`[QUOTA] Rate limit hit. Waiting ${Math.round(waitTime/1000)}s before retry ${i + 1}/${maxRetries}`);
         await new Promise(resolve => setTimeout(resolve, waitTime));
         continue;
       }
@@ -171,6 +275,9 @@ export const analyzeImage = async (input: UserInput): Promise<FashionAIResponse>
   if (!apiKey) throw new Error("API Key is missing.");
 
   return callWithRetry(async () => {
+    // Apply rate limiting for Google Cloud Free Tier optimization
+    await rateLimiter.throttle();
+
     const ai = new GoogleGenAI({ apiKey });
     const parts: any[] = [];
     
@@ -214,6 +321,7 @@ LƯU Ý QUAN TRỌNG: 'pose_prompt' PHẢI là một chuỗi JSON hợp lệ ch�
     });
 
     if (response.text) {
+      freeTierMonitor.trackRequest('gemini-2.5-flash', false); // Text generation, not image
       const data = JSON.parse(response.text) as FashionAIResponse;
       data.concepts = (data.concepts || []).slice(0, 3).map((c, i) => ({
         ...c,
@@ -251,6 +359,9 @@ export const regeneratePosePrompt = async (
   };
 
   return callWithRetry(async () => {
+    // Apply rate limiting for Google Cloud Free Tier optimization
+    await rateLimiter.throttle();
+
     const ai = new GoogleGenAI({ apiKey });
     
     // Đảm bảo có đầy đủ thông tin concept từ JSON đã lưu
@@ -358,6 +469,7 @@ YÊU CẦU ĐẶC BIỆT TỪ GIÁM ĐỐC SÁNG TẠO:
     });
 
     if (response.text) {
+      freeTierMonitor.trackRequest('gemini-2.5-flash', false); // Text generation
       const out = JSON.parse(response.text);
       return {
         ...out,
@@ -372,14 +484,17 @@ YÊU CẦU ĐẶC BIỆT TỪ GIÁM ĐỐC SÁNG TẠO:
 };
 
 export const generateFashionImage = async (
-  prompt: string, 
+  prompt: string,
   userInput: UserInput,
   options?: { faceLock?: boolean, outfitLock?: boolean }
 ): Promise<string> => {
   const apiKey = (process.env as any).API_KEY || (process.env as any).GEMINI_API_KEY;
   if (!apiKey) throw new Error("API Key is missing");
-  
+
   return callWithRetry(async () => {
+    // Apply rate limiting for Google Cloud Free Tier optimization
+    await rateLimiter.throttle();
+
     const ai = new GoogleGenAI({ apiKey });
     const parts: any[] = [];
 
@@ -455,21 +570,24 @@ export const generateFashionImage = async (
     } catch (e) {}
 
     // Thêm yêu cầu chất lượng cao vào prompt — yêu cầu rõ ràng trả về inline image (PNG) ở full resolution
-    const highQualityPrompt = `Generate a HIGH RESOLUTION fashion photograph with exceptional detail and quality.
+    const highQualityPrompt = `Generate a HIGH RESOLUTION fashion photograph with exceptional detail and quality at 1536x2048 pixels (3:4 aspect ratio).
     IMPORTANT (API RESPONSE REQUIREMENT): Return the full-resolution image as inline base64 image data (PNG) in the response parts, not only a text description or thumbnail.
-    DO NOT downscale or compress the image. Output must preserve maximum photographic detail (at least 2048x3072 pixels for 3:4 aspect ratio if available).
+    DO NOT downscale or compress the image. Output must be exactly 1536x2048 pixels with maximum photographic detail and ultra-high quality.
     Use ultra-high detail, professional photography standards, natural skin texture, and fabric micro-detail.
     Response format requirement: include an inlineData part with mimeType 'image/png' and the full base64 image payload.
     ${technicalPrompt}`;
 
     parts.push({ text: highQualityPrompt });
 
-    // Chỉ dùng gemini-3-pro-image-preview với retry 3 lần
+    // Aggressive retry strategy chỉ với gemini-3-pro-image-preview
     let response;
     let lastError: any;
 
-    for (let attempt = 1; attempt <= 3; attempt++) {
+    // Retry với exponential backoff: 2s, 4s, 8s, 16s, 32s, 64s (tổng 6 lần)
+    const maxRetries = 6;
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
+        console.log(`[AI] Thử tạo ảnh với gemini-3-pro-image-preview (lần ${attempt}/${maxRetries})`);
         response = await ai.models.generateContent({
           model: 'gemini-3-pro-image-preview',
           contents: { parts },
@@ -479,32 +597,59 @@ export const generateFashionImage = async (
             }
           }
         });
+        freeTierMonitor.trackRequest('gemini-3-pro-image-preview', true);
+        console.log(`[AI] Tạo ảnh thành công với gemini-3-pro-image-preview (lần ${attempt})`);
         break; // Thành công, thoát vòng lặp
       } catch (error: any) {
         lastError = error;
         const errorMsg = error.message || '';
-        if (errorMsg.includes('not found') || errorMsg.includes('not available') || errorMsg.includes('404')) {
-          console.warn(`Model gemini-3-pro-image-preview không khả dụng (lần ${attempt}/3)`);
-          if (attempt < 3) {
-            // Đợi 2 giây trước khi thử lại
-            await new Promise(resolve => setTimeout(resolve, 2000));
-            continue;
-          }
+
+        // Kiểm tra các loại lỗi có thể retry
+        const isRetryableError = errorMsg.includes('not found') ||
+                                errorMsg.includes('not available') ||
+                                errorMsg.includes('404') ||
+                                errorMsg.includes('429') ||
+                                errorMsg.includes('RESOURCE_EXHAUSTED') ||
+                                errorMsg.includes('quota') ||
+                                errorMsg.includes('timeout') ||
+                                errorMsg.includes('internal');
+
+        if (isRetryableError && attempt < maxRetries) {
+          // Exponential backoff: 2^attempt giây (2s, 4s, 8s, 16s, 32s, 64s)
+          const waitTime = Math.pow(2, attempt) * 1000;
+          console.warn(`[AI] Lỗi retry-able: ${errorMsg}. Đợi ${waitTime/1000}s trước lần thử ${attempt + 1}/${maxRetries}`);
+          await new Promise(resolve => setTimeout(resolve, waitTime));
+          continue;
+        } else {
+          // Lỗi không retry được hoặc đã hết lần thử
+          console.error(`[AI] Lỗi không thể retry hoặc đã hết ${maxRetries} lần thử: ${errorMsg}`);
+          throw error;
         }
-        // Nếu không phải lỗi 404 hoặc đã thử 3 lần, throw luôn
-        throw error;
       }
     }
 
-    // Nếu sau 3 lần vẫn không được, throw error
+    // Nếu sau tất cả retry vẫn không được
     if (!response) {
-      throw new Error(`Model gemini-3-pro-image-preview không khả dụng sau 3 lần thử. Chi tiết lỗi: ${lastError?.message || 'Unknown error'}`);
+      throw new Error(`Model gemini-3-pro-image-preview không khả dụng sau ${maxRetries} lần thử. Chi tiết lỗi cuối: ${lastError?.message || 'Unknown error'}`);
     }
     
     // Trả về base64 để frontend hiển thị ngay
     // Ảnh sẽ được lưu vào Drive khi người dùng bấm "Lưu Concept"
     for (const part of response.candidates?.[0]?.content?.parts || []) {
       if (part.inlineData) {
+        try {
+          // Save debug copy on server to inspect actual bytes and file size
+          const outDir = path.join(process.cwd(), "tmp");
+          if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true });
+          const ext = part.inlineData.mimeType && part.inlineData.mimeType.includes("png") ? "png" : (part.inlineData.mimeType && part.inlineData.mimeType.includes("jpeg") ? "jpg" : "bin");
+          const filename = `ai_image_${Date.now()}.${ext}`;
+          const outPath = path.join(outDir, filename);
+          const buffer = Buffer.from(part.inlineData.data, "base64");
+          fs.writeFileSync(outPath, buffer);
+          console.log(`[AI DEBUG] Saved generated image to ${outPath} (${buffer.length} bytes)`);
+        } catch (err) {
+          console.warn("[AI DEBUG] Failed to save generated image for inspection:", err);
+        }
         return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
       }
     }
@@ -513,7 +658,7 @@ export const generateFashionImage = async (
 };
 
 export const refineFashionImage = async (
-  imageBase64: string, 
+  imageBase64: string,
   instruction: string
 ): Promise<string> => {
   const apiKey = (process.env as any).API_KEY || (process.env as any).GEMINI_API_KEY;
@@ -523,21 +668,27 @@ export const refineFashionImage = async (
   const mimeType = imageBase64.match(/data:([^;]+);base64/)?.[1] || 'image/png';
 
   return callWithRetry(async () => {
+    // Apply rate limiting for Google Cloud Free Tier optimization
+    await rateLimiter.throttle();
+
     const ai = new GoogleGenAI({ apiKey });
     
-    // Chỉ dùng gemini-3-pro-image-preview với retry 3 lần
+    // Aggressive retry strategy chỉ với gemini-3-pro-image-preview cho refine
     let response;
     let lastError: any;
 
-    for (let attempt = 1; attempt <= 3; attempt++) {
-      try {
-        // Thêm yêu cầu chất lượng cao cho refine — yêu cầu rõ ràng trả về inline image (PNG) ở full resolution
-        const highQualityRefinePrompt = `Refine this fashion photograph while keeping the model and clothing exactly the same.
-        IMPORTANT (API RESPONSE REQUIREMENT): Return the refined image as inline base64 image data (PNG) in the response parts, do NOT return only text or a thumbnail.
-        DO NOT downscale or compress the image. Maintain maximum resolution and ultra-high detail quality (preserve at least original pixel dimensions or up to the model's maximum).
-        Ensure output includes an inlineData part with mimeType 'image/png' and the full base64 image payload.
-        Task: ${instruction}.`;
+    // Thêm yêu cầu chất lượng cao cho refine — yêu cầu rõ ràng trả về inline image (PNG) ở full resolution
+    const highQualityRefinePrompt = `Refine this fashion photograph while keeping the model and clothing exactly the same at 1536x2048 pixels (3:4 aspect ratio).
+    IMPORTANT (API RESPONSE REQUIREMENT): Return the refined image as inline base64 image data (PNG) in the response parts, do NOT return only text or a thumbnail.
+    DO NOT downscale or compress the image. Output must be exactly 1536x2048 pixels with maximum resolution and ultra-high detail quality.
+    Ensure output includes an inlineData part with mimeType 'image/png' and the full base64 image payload.
+    Task: ${instruction}.`;
 
+    // Retry với exponential backoff: 2s, 4s, 8s, 16s, 32s, 64s (tổng 6 lần)
+    const maxRetries = 6;
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        console.log(`[AI] Thử refine với gemini-3-pro-image-preview (lần ${attempt}/${maxRetries})`);
         response = await ai.models.generateContent({
           model: 'gemini-3-pro-image-preview',
           contents: {
@@ -545,34 +696,66 @@ export const refineFashionImage = async (
               { inlineData: { data: base64Data, mimeType: mimeType } },
               { text: highQualityRefinePrompt }
             ]
+          },
+          config: {
+            imageConfig: {
+              aspectRatio: "3:4"
+            }
           }
         });
+        freeTierMonitor.trackRequest('gemini-3-pro-image-preview', true);
+        console.log(`[AI] Refine thành công với gemini-3-pro-image-preview (lần ${attempt})`);
         break; // Thành công, thoát vòng lặp
       } catch (error: any) {
         lastError = error;
         const errorMsg = error.message || '';
-        if (errorMsg.includes('not found') || errorMsg.includes('not available') || errorMsg.includes('404')) {
-          console.warn(`Model gemini-3-pro-image-preview không khả dụng cho refine (lần ${attempt}/3)`);
-          if (attempt < 3) {
-            // Đợi 2 giây trước khi thử lại
-            await new Promise(resolve => setTimeout(resolve, 2000));
-            continue;
-          }
+
+        // Kiểm tra các loại lỗi có thể retry
+        const isRetryableError = errorMsg.includes('not found') ||
+                                errorMsg.includes('not available') ||
+                                errorMsg.includes('404') ||
+                                errorMsg.includes('429') ||
+                                errorMsg.includes('RESOURCE_EXHAUSTED') ||
+                                errorMsg.includes('quota') ||
+                                errorMsg.includes('timeout') ||
+                                errorMsg.includes('internal');
+
+        if (isRetryableError && attempt < maxRetries) {
+          // Exponential backoff: 2^attempt giây (2s, 4s, 8s, 16s, 32s, 64s)
+          const waitTime = Math.pow(2, attempt) * 1000;
+          console.warn(`[AI] Lỗi retry-able cho refine: ${errorMsg}. Đợi ${waitTime/1000}s trước lần thử ${attempt + 1}/${maxRetries}`);
+          await new Promise(resolve => setTimeout(resolve, waitTime));
+          continue;
+        } else {
+          // Lỗi không retry được hoặc đã hết lần thử
+          console.error(`[AI] Lỗi không thể retry cho refine hoặc đã hết ${maxRetries} lần thử: ${errorMsg}`);
+          throw error;
         }
-        // Nếu không phải lỗi 404 hoặc đã thử 3 lần, throw luôn
-        throw error;
       }
     }
 
-    // Nếu sau 3 lần vẫn không được, throw error
+    // Nếu sau tất cả retry vẫn không được
     if (!response) {
-      throw new Error(`Model gemini-3-pro-image-preview không khả dụng sau 3 lần thử cho refine. Chi tiết lỗi: ${lastError?.message || 'Unknown error'}`);
+      throw new Error(`Model gemini-3-pro-image-preview không khả dụng cho refine sau ${maxRetries} lần thử. Chi tiết lỗi cuối: ${lastError?.message || 'Unknown error'}`);
     }
     
     // Trả về base64 để frontend hiển thị ngay
     // Ảnh sẽ được lưu vào Drive khi người dùng bấm "Lưu Concept"
     for (const part of response.candidates?.[0]?.content?.parts || []) {
       if (part.inlineData) {
+        try {
+          // Save debug copy on server to inspect actual bytes and file size
+          const outDir = path.join(process.cwd(), "tmp");
+          if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true });
+          const ext = part.inlineData.mimeType && part.inlineData.mimeType.includes("png") ? "png" : (part.inlineData.mimeType && part.inlineData.mimeType.includes("jpeg") ? "jpg" : "bin");
+          const filename = `ai_refined_image_${Date.now()}.${ext}`;
+          const outPath = path.join(outDir, filename);
+          const buffer = Buffer.from(part.inlineData.data, "base64");
+          fs.writeFileSync(outPath, buffer);
+          console.log(`[AI DEBUG] Saved refined image to ${outPath} (${buffer.length} bytes)`);
+        } catch (err) {
+          console.warn("[AI DEBUG] Failed to save refined image for inspection:", err);
+        }
         return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
       }
     }

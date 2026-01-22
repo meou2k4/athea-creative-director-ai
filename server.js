@@ -6,11 +6,221 @@ import nodemailer from 'nodemailer';
 import dotenv from 'dotenv';
 import { google } from 'googleapis';
 import { Readable } from 'stream';
+import { analyzeImage, generateFashionImage, refineFashionImage, regeneratePosePrompt } from './services/geminiService.js';
 
 dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 3001;
+
+// Cloud Run optimizations
+app.set('trust proxy', 1); // Trust Cloud Run proxy
+app.use(express.json({ limit: '50mb' })); // Keep existing limit
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
+
+// Increase timeout for long-running AI operations (30 minutes for Cloud Run max)
+const SERVER_TIMEOUT = 30 * 60 * 1000; // 30 minutes
+app.use((req, res, next) => {
+  // Set timeout per request
+  req.setTimeout(SERVER_TIMEOUT);
+  res.setTimeout(SERVER_TIMEOUT);
+  next();
+});
+
+// Health check endpoint for Cloud Run
+app.get('/health', (req, res) => {
+  res.status(200).json({
+    status: 'healthy',
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime(),
+    memory: process.memoryUsage()
+  });
+});
+
+// Readiness check
+app.get('/ready', (req, res) => {
+  // Check if service can handle requests (AI models ready, etc.)
+  res.status(200).json({
+    status: 'ready',
+    timestamp: new Date().toISOString()
+  });
+});
+
+/**
+ * Memory-Optimized Request Queue for Cloud Run Free Tier
+ * Handles cold starts, memory limits, and prevents overload
+ */
+class RequestQueue {
+  constructor() {
+    this.queue = [];
+    this.processing = false;
+    this.maxConcurrent = 1; // Very conservative for memory-limited free tier
+    this.activeRequests = 0;
+    this.memoryWarnings = 0;
+  }
+
+  // Monitor memory usage
+  checkMemoryHealth() {
+    const memUsage = process.memoryUsage();
+    const memUsageMB = memUsage.heapUsed / 1024 / 1024;
+    const memLimitMB = 400; // Conservative limit under 512MB Cloud Run limit
+
+    if (memUsageMB > memLimitMB) {
+      this.memoryWarnings++;
+      console.warn(`[MEMORY] High memory usage: ${memUsageMB.toFixed(1)}MB/${memLimitMB}MB (warning #${this.memoryWarnings})`);
+
+      // Force garbage collection if available
+      if (global.gc) {
+        global.gc();
+        console.log('[MEMORY] Forced garbage collection');
+      }
+
+      return false; // Unhealthy
+    }
+
+    return true; // Healthy
+  }
+
+  async enqueue(operation, priority = 'normal') {
+    return new Promise((resolve, reject) => {
+      const request = {
+        operation,
+        priority,
+        resolve,
+        reject,
+        timestamp: Date.now(),
+        id: Math.random().toString(36).substr(2, 9)
+      };
+
+      // Add to queue with priority sorting
+      if (priority === 'high') {
+        this.queue.unshift(request); // Add to front for high priority
+      } else {
+        this.queue.push(request); // Add to end for normal priority
+      }
+
+      console.log(`[QUEUE] Added request ${request.id} (${priority}). Queue size: ${this.queue.length}`);
+
+      this.processQueue();
+    });
+  }
+
+  async processQueue() {
+    if (this.processing || this.queue.length === 0 || this.activeRequests >= this.maxConcurrent) {
+      return;
+    }
+
+    // Memory health check before processing
+    if (!this.checkMemoryHealth()) {
+      console.log('[QUEUE] Skipping queue processing due to high memory usage');
+      // Schedule retry in 30 seconds
+      setTimeout(() => this.processQueue(), 30000);
+      return;
+    }
+
+    this.processing = true;
+
+    while (this.queue.length > 0 && this.activeRequests < this.maxConcurrent) {
+      // Double-check memory before each request
+      if (!this.checkMemoryHealth()) {
+        console.log('[QUEUE] Stopping processing due to memory pressure');
+        break;
+      }
+
+      const request = this.queue.shift();
+      if (!request) break;
+
+      this.activeRequests++;
+      const startTime = Date.now();
+
+      console.log(`[QUEUE] Processing request ${request.id}. Active: ${this.activeRequests}/${this.maxConcurrent}`);
+
+      try {
+        const result = await request.operation();
+        request.resolve(result);
+
+        const duration = Date.now() - startTime;
+        console.log(`[QUEUE] Completed request ${request.id} in ${duration}ms`);
+
+        // Memory check after completion
+        this.checkMemoryHealth();
+
+      } catch (error) {
+        console.error(`[QUEUE] Failed request ${request.id}:`, error);
+        request.reject(error);
+      } finally {
+        this.activeRequests--;
+
+        // Small delay between requests to allow memory cleanup
+        if (this.queue.length > 0) {
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+      }
+    }
+
+    this.processing = false;
+  }
+
+  getStats() {
+    return {
+      queueLength: this.queue.length,
+      activeRequests: this.activeRequests,
+      maxConcurrent: this.maxConcurrent,
+      oldestRequest: this.queue.length > 0 ? Date.now() - this.queue[0].timestamp : 0
+    };
+  }
+}
+
+const requestQueue = new RequestQueue();
+
+/**
+ * Keep-Alive System for Cloud Run
+ * Prevents cold starts by maintaining instance activity
+ */
+class KeepAlive {
+  constructor() {
+    this.interval = null;
+    this.isEnabled = process.env.NODE_ENV === 'production'; // Only in production
+    this.keepAliveUrl = process.env.KEEP_ALIVE_URL || `http://localhost:${PORT}/health`;
+  }
+
+  start() {
+    if (!this.isEnabled) {
+      console.log('[KEEP-ALIVE] Disabled in development mode');
+      return;
+    }
+
+    console.log('[KEEP-ALIVE] Starting keep-alive system');
+
+    // Ping every 10 minutes (Cloud Run sleeps after 15 minutes)
+    this.interval = setInterval(async () => {
+      try {
+        const response = await fetch(this.keepAliveUrl, {
+          method: 'GET',
+          timeout: 5000 // 5 second timeout
+        });
+
+        if (response.ok) {
+          console.log('[KEEP-ALIVE] Ping successful');
+        } else {
+          console.warn('[KEEP-ALIVE] Ping failed with status:', response.status);
+        }
+      } catch (error) {
+        console.error('[KEEP-ALIVE] Ping error:', error.message);
+      }
+    }, 10 * 60 * 1000); // 10 minutes
+  }
+
+  stop() {
+    if (this.interval) {
+      clearInterval(this.interval);
+      this.interval = null;
+      console.log('[KEEP-ALIVE] Stopped keep-alive system');
+    }
+  }
+}
+
+const keepAlive = new KeepAlive();
 
 const corsOptions = {
   origin: function (origin, callback) {
@@ -805,15 +1015,201 @@ app.post('/api/auth', async (req, res) => {
     }
 });
 
+// --- API QUEUE STATS ---
+app.get('/api/queue-stats', (req, res) => {
+  const queueStats = requestQueue.getStats();
+  res.json({
+    success: true,
+    stats: {
+      ...queueStats,
+      uptime: process.uptime(),
+      memoryUsage: process.memoryUsage(),
+      cloudRunOptimized: true
+    }
+  });
+});
+
+// --- API FREE TIER USAGE STATS ---
+app.get('/api/free-tier-stats', async (req, res) => {
+    try {
+        // Import the monitor from geminiService
+        const { freeTierMonitor } = await import('./services/geminiService.ts');
+        const stats = freeTierMonitor.getUsageReport();
+
+        res.json({
+            success: true,
+            stats: {
+                totalRequests: stats.requests,
+                estimatedCost: stats.estimatedCost,
+                hoursRunning: stats.hoursRunning,
+                requestsPerHour: stats.requests / Math.max(stats.hoursRunning, 1),
+                remainingFreeCredit: Math.max(300 - stats.estimatedCost, 0),
+                percentUsed: ((stats.estimatedCost / 300) * 100).toFixed(1)
+            }
+        });
+    } catch (error) {
+        console.error('Error getting free tier stats:', error);
+        res.status(500).json({ success: false, error: 'Unable to get usage stats' });
+    }
+});
+
+// --- AI API ENDPOINTS (Cloud Run Optimized) ---
+
+// Analyze fashion images
+app.post('/api/ai/analyze', async (req, res) => {
+  try {
+    const { userInput } = req.body;
+
+    if (!userInput) {
+      return res.status(400).json({ success: false, error: 'Missing userInput' });
+    }
+
+    console.log('[AI API] Starting analysis...');
+    const result = await requestQueue.enqueue(async () => {
+      return await analyzeImage(userInput);
+    }, 'high'); // High priority for analysis
+
+    res.json({ success: true, data: result });
+  } catch (error) {
+    console.error('[AI API] Analysis error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Analysis failed',
+      retryable: error.message?.includes('429') || error.message?.includes('timeout')
+    });
+  }
+});
+
+// Generate fashion image with progress streaming
+app.post('/api/ai/generate', async (req, res) => {
+  try {
+    const { prompt, userInput, options } = req.body;
+
+    if (!prompt || !userInput) {
+      return res.status(400).json({ success: false, error: 'Missing prompt or userInput' });
+    }
+
+    // Set headers for SSE (Server-Sent Events) for progress updates
+    res.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive',
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Headers': 'Cache-Control'
+    });
+
+    const sendProgress = (message, progress = 0) => {
+      res.write(`data: ${JSON.stringify({ message, progress, timestamp: Date.now() })}\n\n`);
+    };
+
+    console.log('[AI API] Starting image generation...');
+    sendProgress('Starting image generation...', 10);
+
+    const result = await requestQueue.enqueue(async () => {
+      sendProgress('Processing with AI model...', 50);
+      const imageUrl = await generateFashionImage(prompt, userInput, options);
+      sendProgress('Image generated successfully!', 100);
+      return imageUrl;
+    }, 'normal');
+
+    // Send final result
+    res.write(`data: ${JSON.stringify({ success: true, imageUrl: result, completed: true })}\n\n`);
+    res.end();
+
+  } catch (error) {
+    console.error('[AI API] Generation error:', error);
+    res.write(`data: ${JSON.stringify({
+      success: false,
+      error: error.message || 'Generation failed',
+      retryable: error.message?.includes('429') || error.message?.includes('timeout'),
+      completed: true
+    })}\n\n`);
+    res.end();
+  }
+});
+
+// Refine fashion image with progress streaming
+app.post('/api/ai/refine', async (req, res) => {
+  try {
+    const { imageBase64, instruction } = req.body;
+
+    if (!imageBase64 || !instruction) {
+      return res.status(400).json({ success: false, error: 'Missing imageBase64 or instruction' });
+    }
+
+    // Set headers for SSE
+    res.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive',
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Headers': 'Cache-Control'
+    });
+
+    const sendProgress = (message, progress = 0) => {
+      res.write(`data: ${JSON.stringify({ message, progress, timestamp: Date.now() })}\n\n`);
+    };
+
+    console.log('[AI API] Starting image refinement...');
+    sendProgress('Starting image refinement...', 10);
+
+    const result = await requestQueue.enqueue(async () => {
+      sendProgress('Processing refinement with AI model...', 50);
+      const imageUrl = await refineFashionImage(imageBase64, instruction);
+      sendProgress('Image refined successfully!', 100);
+      return imageUrl;
+    }, 'normal');
+
+    // Send final result
+    res.write(`data: ${JSON.stringify({ success: true, imageUrl: result, completed: true })}\n\n`);
+    res.end();
+
+  } catch (error) {
+    console.error('[AI API] Refinement error:', error);
+    res.write(`data: ${JSON.stringify({
+      success: false,
+      error: error.message || 'Refinement failed',
+      retryable: error.message?.includes('429') || error.message?.includes('timeout'),
+      completed: true
+    })}\n\n`);
+    res.end();
+  }
+});
+
+// Regenerate pose prompt
+app.post('/api/ai/regenerate-pose', async (req, res) => {
+  try {
+    const { concept, pose, userInput } = req.body;
+
+    if (!concept || !pose || !userInput) {
+      return res.status(400).json({ success: false, error: 'Missing concept, pose, or userInput' });
+    }
+
+    console.log('[AI API] Starting pose regeneration...');
+    const result = await requestQueue.enqueue(async () => {
+      return await regeneratePosePrompt(concept, pose, userInput);
+    }, 'low'); // Lower priority for pose regeneration
+
+    res.json({ success: true, data: result });
+  } catch (error) {
+    console.error('[AI API] Pose regeneration error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Pose regeneration failed',
+      retryable: error.message?.includes('429') || error.message?.includes('timeout')
+    });
+  }
+});
+
 // --- API LOGGING ENDPOINT ---
 app.post('/api/log', async (req, res) => {
     try {
         const { userInfo, action, status, details } = req.body;
-        
+
         // Log vào server console (chỉ server mới thấy)
         const logMessage = `${userInfo}_${action}_${status}${details ? ': ' + details : ''}`;
         console.log(`[LOG] ${logMessage}`);
-        
+
         // Trả về success ngay lập tức (không cần chờ)
         res.json({ success: true });
     } catch (error) {
@@ -822,13 +1218,42 @@ app.post('/api/log', async (req, res) => {
     }
 });
 
+// Start keep-alive system
+keepAlive.start();
+
+// Graceful shutdown
+process.on('SIGTERM', () => {
+  console.log('[SHUTDOWN] Received SIGTERM, shutting down gracefully...');
+  keepAlive.stop();
+  process.exit(0);
+});
+
+process.on('SIGINT', () => {
+  console.log('[SHUTDOWN] Received SIGINT, shutting down gracefully...');
+  keepAlive.stop();
+  process.exit(0);
+});
+
 app.listen(PORT, '0.0.0.0', () => {
-    console.log(`🚀 Server ready on port ${PORT}`);
+    console.log(`🚀 Server ready on port ${PORT} (Cloud Run optimized)`);
     console.log(`📡 API endpoints available:`);
+    console.log(`   - GET  /health (Cloud Run health check)`);
+    console.log(`   - GET  /ready (Readiness check)`);
     console.log(`   - GET  /api/test`);
+    console.log(`   - GET  /api/queue-stats (Queue monitoring)`);
+    console.log(`   - GET  /api/free-tier-stats`);
     console.log(`   - GET  /api/image/:fileId`);
     console.log(`   - POST /api/save-image`);
     console.log(`   - POST /api/collection`);
+    console.log(`   - POST /api/ai/analyze (AI analysis with queue)`);
+    console.log(`   - POST /api/ai/generate (Image generation with streaming)`);
+    console.log(`   - POST /api/ai/refine (Image refinement with streaming)`);
+    console.log(`   - POST /api/ai/regenerate-pose (Pose regeneration)`);
     console.log(`   - POST /api/auth`);
     console.log(`   - POST /api/log`);
+    console.log(`🔄 Cloud Run optimizations active:`);
+    console.log(`   - Request queuing (max 1 concurrent)`);
+    console.log(`   - Memory monitoring (<400MB limit)`);
+    console.log(`   - Keep-alive system (production only)`);
+    console.log(`   - 30min timeout for long operations`);
 });
