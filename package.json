@@ -5,9 +5,11 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "dev:server": "node server.js",
+    "build:server": "tsc services/geminiService.ts --target ES2022 --module ESNext --moduleResolution node --esModuleInterop --skipLibCheck --noEmit false",
+    "dev:server": "npm run build:server && node server.js",
     "dev:all": "concurrently \"npm run dev:server\" \"npm run dev\"",
     "build": "vite build",
+    "gcp-build": "npm run build:server",
     "preview": "vite preview",
     "start": "node server.js"
   },
