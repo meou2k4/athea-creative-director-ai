@@ -66,7 +66,7 @@ class RateLimiter {
     // Free tier limit: ~60 requests/minute
     if (this.requestCount >= 50) { // Conservative limit
       const waitTime = 60000 - timeSinceMinuteStart + 1000; // Wait until next minute + buffer
-      console.log(`[RATE LIMIT] Hit 50 requests/minute limit. Waiting ${Math.round(waitTime/1000)}s`);
+      console.log(`[RATE LIMIT] Hit 50 requests/minute limit. Waiting ${Math.round(waitTime / 1000)}s`);
       await new Promise(resolve => setTimeout(resolve, waitTime));
       this.requestCount = 0;
       this.minuteStart = Date.now();
@@ -188,9 +188,9 @@ const responseSchema: Schema = {
               properties: {
                 pose_title: { type: Type.STRING },
                 pose_description: { type: Type.STRING },
-                pose_prompt: { 
-                  type: Type.STRING, 
-                  description: "JSON string: { 'subject_lock': '...', 'outfit_anchor': '...', 'pose_and_framing': '...', 'environment': '...', 'lighting_and_camera': '...', 'quality_specs': '...' }" 
+                pose_prompt: {
+                  type: Type.STRING,
+                  description: "JSON string: { 'subject_lock': '...', 'outfit_anchor': '...', 'pose_and_framing': '...', 'environment': '...', 'lighting_and_camera': '...', 'quality_specs': '...' }"
                 }
               },
               required: ["pose_title", "pose_description", "pose_prompt"]
@@ -254,17 +254,17 @@ async function callWithRetry<T>(fn: () => Promise<T>, maxRetries = 8): Promise<T
 
       // Comprehensive error detection
       const isQuotaError = errorMessage.includes("429") ||
-                          errorMessage.includes("RESOURCE_EXHAUSTED") ||
-                          errorMessage.includes("quota") ||
-                          errorMessage.includes("RATE_LIMIT");
+        errorMessage.includes("RESOURCE_EXHAUSTED") ||
+        errorMessage.includes("quota") ||
+        errorMessage.includes("RATE_LIMIT");
 
       const isRetryableError = isQuotaError ||
-                              errorMessage.includes('not found') ||
-                              errorMessage.includes('not available') ||
-                              errorMessage.includes('404') ||
-                              errorMessage.includes('timeout') ||
-                              errorMessage.includes('internal') ||
-                              errorMessage.includes('SERVICE_UNAVAILABLE');
+        errorMessage.includes('not found') ||
+        errorMessage.includes('not available') ||
+        errorMessage.includes('404') ||
+        errorMessage.includes('timeout') ||
+        errorMessage.includes('internal') ||
+        errorMessage.includes('SERVICE_UNAVAILABLE');
 
       if (isRetryableError && i < maxRetries - 1) {
         // Smart backoff: aggressive for quota, moderate for others
@@ -272,7 +272,7 @@ async function callWithRetry<T>(fn: () => Promise<T>, maxRetries = 8): Promise<T
         const waitTime = baseWaitTime + Math.random() * 2000; // Add jitter
 
         const errorType = isQuotaError ? '[QUOTA]' : '[RETRYABLE]';
-        console.warn(`${errorType} ${errorMessage}. Waiting ${Math.round(waitTime/1000)}s before retry ${i + 1}/${maxRetries}`);
+        console.warn(`${errorType} ${errorMessage}. Waiting ${Math.round(waitTime / 1000)}s before retry ${i + 1}/${maxRetries}`);
         await new Promise(resolve => setTimeout(resolve, waitTime));
         continue;
       }
@@ -292,7 +292,7 @@ export const analyzeImage = async (input: UserInput): Promise<FashionAIResponse>
 
     const ai = new GoogleGenAI({ apiKey });
     const parts: any[] = [];
-    
+
     if (input.productImages && input.productImages.length > 0) {
       parts.push({ text: "PRODUCT REFERENCE IMAGES (Multiple angles/details):" });
       input.productImages.forEach((img, idx) => {
@@ -375,24 +375,24 @@ export const regeneratePosePrompt = async (
     await rateLimiter.throttle();
 
     const ai = new GoogleGenAI({ apiKey });
-    
+
     // Đảm bảo có đầy đủ thông tin concept từ JSON đã lưu
     const conceptNameVn = concept.concept_name_vn || concept.concept_name_en || "Concept";
     const conceptNameEn = concept.concept_name_en || concept.concept_name_vn || "Concept";
     const salesTarget = concept.sales_target || "High-end fashion";
     const shootLocation = concept.shoot_location || "Luxury setting";
     const currentPoseTitle = pose.pose_title || "Current pose";
-    
+
     // Chuẩn bị parts để gửi ảnh khuôn vào AI
     const parts: any[] = [];
-    
+
     // Thêm product images (ảnh sản phẩm) từ JSON đã lưu
     if (userInput?.productImages && userInput.productImages.length > 0) {
       userInput.productImages.forEach((img, idx) => {
         if (img && img.data) {
           let imageData = img.data;
           let mimeType = img.mimeType;
-          
+
           // Xử lý base64 string
           if (typeof imageData === 'string' && imageData.startsWith('data:')) {
             const matches = imageData.match(/^data:([^;]+);base64,(.+)$/);
@@ -401,19 +401,19 @@ export const regeneratePosePrompt = async (
               imageData = matches[2];
             }
           }
-          
+
           if (mimeType && imageData) {
             parts.push({ inlineData: { mimeType, data: imageData } });
           }
         }
       });
     }
-    
+
     // Thêm face reference (ảnh khuôn mặt) từ JSON đã lưu
     if (userInput?.faceReference?.data) {
       let faceData = userInput.faceReference.data;
       let faceMimeType = userInput.faceReference.mimeType;
-      
+
       if (typeof faceData === 'string' && faceData.startsWith('data:')) {
         const matches = faceData.match(/^data:([^;]+);base64,(.+)$/);
         if (matches && matches.length === 3) {
@@ -421,17 +421,17 @@ export const regeneratePosePrompt = async (
           faceData = matches[2];
         }
       }
-      
+
       if (faceMimeType && faceData) {
         parts.push({ inlineData: { mimeType: faceMimeType, data: faceData } });
       }
     }
-    
+
     // Thêm fabric reference (ảnh vải) từ JSON đã lưu
     if (userInput?.fabricReference?.data) {
       let fabricData = userInput.fabricReference.data;
       let fabricMimeType = userInput.fabricReference.mimeType;
-      
+
       if (typeof fabricData === 'string' && fabricData.startsWith('data:')) {
         const matches = fabricData.match(/^data:([^;]+);base64,(.+)$/);
         if (matches && matches.length === 3) {
@@ -439,12 +439,12 @@ export const regeneratePosePrompt = async (
           fabricData = matches[2];
         }
       }
-      
+
       if (fabricMimeType && fabricData) {
         parts.push({ inlineData: { mimeType: fabricMimeType, data: fabricData } });
       }
     }
-    
+
     // Tạo prompt text với thông tin concept từ JSON đã lưu
     const promptText = `HÃY TẠO LẠI MỘT POSE KHÁC CHO CONCEPT NÀY.
 
@@ -466,7 +466,7 @@ YÊU CẦU ĐẶC BIỆT TỪ GIÁM ĐỐC SÁNG TẠO:
 4. Kỹ thuật hoàn hảo: 'pose_prompt' (Tiếng Anh) phải là một tập hợp các chỉ dẫn kỹ thuật cực kỳ chi tiết cho AI (lighting, lens choice, mood, character identity coherence) để tạo ra bức ảnh đẳng cấp nhất, đảm bảo giữ nguyên khuôn mặt và chi tiết trang phục từ ảnh khuôn.`;
 
     // Gửi cả text prompt và ảnh khuôn vào AI
-    const contents = parts.length > 0 
+    const contents = parts.length > 0
       ? [...parts, promptText]  // Nếu có ảnh, gửi ảnh trước, text sau
       : promptText;              // Nếu không có ảnh, chỉ gửi text
 
@@ -516,7 +516,7 @@ export const generateFashionImage = async (
           // Kiểm tra xem data có phải base64 hợp lệ không
           let imageData = img.data;
           let mimeType = img.mimeType;
-          
+
           // Nếu là base64 string (data:image/...), extract mimeType và data
           if (typeof imageData === 'string' && imageData.startsWith('data:')) {
             const matches = imageData.match(/^data:([^;]+);base64,(.+)$/);
@@ -525,18 +525,18 @@ export const generateFashionImage = async (
               imageData = matches[2]; // Chỉ lấy phần base64, không có data: prefix
             }
           }
-          
+
           if (mimeType && imageData) {
             parts.push({ inlineData: { mimeType, data: imageData } });
           }
         }
       });
     }
-    
+
     if (userInput.faceReference?.data && (options?.faceLock !== false)) {
       let faceData = userInput.faceReference.data;
       let faceMimeType = userInput.faceReference.mimeType;
-      
+
       // Nếu là base64 string (data:image/...), extract mimeType và data
       if (typeof faceData === 'string' && faceData.startsWith('data:')) {
         const matches = faceData.match(/^data:([^;]+);base64,(.+)$/);
@@ -545,16 +545,16 @@ export const generateFashionImage = async (
           faceData = matches[2];
         }
       }
-      
+
       if (faceMimeType && faceData) {
         parts.push({ inlineData: { mimeType: faceMimeType, data: faceData } });
       }
     }
-    
+
     if (userInput.fabricReference?.data && (options?.outfitLock !== false)) {
       let fabricData = userInput.fabricReference.data;
       let fabricMimeType = userInput.fabricReference.mimeType;
-      
+
       // Nếu là base64 string (data:image/...), extract mimeType và data
       if (typeof fabricData === 'string' && fabricData.startsWith('data:')) {
         const matches = fabricData.match(/^data:([^;]+);base64,(.+)$/);
@@ -563,7 +563,7 @@ export const generateFashionImage = async (
           fabricData = matches[2];
         }
       }
-      
+
       if (fabricMimeType && fabricData) {
         parts.push({ inlineData: { mimeType: fabricMimeType, data: fabricData } });
       }
@@ -630,11 +630,12 @@ export const generateFashionImage = async (
     let response;
     let lastError: any;
 
-    // Retry với exponential backoff: 2s, 4s, 8s, 16s, 32s, 64s (tổng 6 lần)
-    const maxRetries = 6;
+    // FIX: Giảm retry từ 6 xuống 3 lần để tránh timeout
+    // Retry với exponential backoff: 2s, 4s, 8s (tổng 14s thay vì 126s)
+    const maxRetries = 3;
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
-        console.log(`[AI] Thử tạo ảnh với gemini-3-pro-image-preview (lần ${attempt}/${maxRetries})`);
+        console.log(`[AI] Thử tạo ảnh với gemini-3-pro-image-preview (lần ${attempt}/3)`);
         response = await ai.models.generateContent({
           model: 'gemini-3-pro-image-preview',
           contents: { parts },
@@ -654,18 +655,18 @@ export const generateFashionImage = async (
 
         // Kiểm tra các loại lỗi có thể retry
         const isRetryableError = errorMsg.includes('not found') ||
-                                errorMsg.includes('not available') ||
-                                errorMsg.includes('404') ||
-                                errorMsg.includes('429') ||
-                                errorMsg.includes('RESOURCE_EXHAUSTED') ||
-                                errorMsg.includes('quota') ||
-                                errorMsg.includes('timeout') ||
-                                errorMsg.includes('internal');
+          errorMsg.includes('not available') ||
+          errorMsg.includes('404') ||
+          errorMsg.includes('429') ||
+          errorMsg.includes('RESOURCE_EXHAUSTED') ||
+          errorMsg.includes('quota') ||
+          errorMsg.includes('timeout') ||
+          errorMsg.includes('internal');
 
         if (isRetryableError && attempt < maxRetries) {
           // Exponential backoff: 2^attempt giây (2s, 4s, 8s, 16s, 32s, 64s)
           const waitTime = Math.pow(2, attempt) * 1000;
-          console.warn(`[AI] Lỗi retry-able: ${errorMsg}. Đợi ${waitTime/1000}s trước lần thử ${attempt + 1}/${maxRetries}`);
+          console.warn(`[AI] Lỗi retry-able: ${errorMsg}. Đợi ${waitTime / 1000}s trước lần thử ${attempt + 1}/${maxRetries}`);
           await new Promise(resolve => setTimeout(resolve, waitTime));
           continue;
         } else {
@@ -678,9 +679,9 @@ export const generateFashionImage = async (
 
     // Nếu sau tất cả retry vẫn không được
     if (!response) {
-      throw new Error(`Model gemini-3-pro-image-preview không khả dụng sau ${maxRetries} lần thử. Chi tiết lỗi cuối: ${lastError?.message || 'Unknown error'}`);
+      throw new Error(`Model gemini-3-pro-image-preview không khả dụng sau 3 lần thử. Chi tiết lỗi cuối: ${lastError?.message || 'Unknown error'}`);
     }
-    
+
     // Trả về base64 để frontend hiển thị ngay
     // Ảnh sẽ được lưu vào Drive khi người dùng bấm "Lưu Concept"
     for (const part of response.candidates?.[0]?.content?.parts || []) {
@@ -720,7 +721,7 @@ export const refineFashionImage = async (
     await rateLimiter.throttle();
 
     const ai = new GoogleGenAI({ apiKey });
-    
+
     // Aggressive retry strategy chỉ với gemini-3-pro-image-preview cho refine
     let response;
     let lastError: any;
@@ -741,11 +742,11 @@ export const refineFashionImage = async (
 
     Task: ${instruction}.`;
 
-    // Retry với exponential backoff: 2s, 4s, 8s, 16s, 32s, 64s (tổng 6 lần)
-    const maxRetries = 6;
+    // FIX: Giảm retry từ 6 xuống 3 lần để tránh timeout (giống generateFashionImage)
+    const maxRetries = 3;
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
-        console.log(`[AI] Thử refine với gemini-3-pro-image-preview (lần ${attempt}/${maxRetries})`);
+        console.log(`[AI] Thử refine với gemini-3-pro-image-preview (lần ${attempt}/3)`);
         response = await ai.models.generateContent({
           model: 'gemini-3-pro-image-preview',
           contents: {
@@ -770,23 +771,23 @@ export const refineFashionImage = async (
 
         // Kiểm tra các loại lỗi có thể retry
         const isRetryableError = errorMsg.includes('not found') ||
-                                errorMsg.includes('not available') ||
-                                errorMsg.includes('404') ||
-                                errorMsg.includes('429') ||
-                                errorMsg.includes('RESOURCE_EXHAUSTED') ||
-                                errorMsg.includes('quota') ||
-                                errorMsg.includes('timeout') ||
-                                errorMsg.includes('internal');
+          errorMsg.includes('not available') ||
+          errorMsg.includes('404') ||
+          errorMsg.includes('429') ||
+          errorMsg.includes('RESOURCE_EXHAUSTED') ||
+          errorMsg.includes('quota') ||
+          errorMsg.includes('timeout') ||
+          errorMsg.includes('internal');
 
         if (isRetryableError && attempt < maxRetries) {
           // Exponential backoff: 2^attempt giây (2s, 4s, 8s, 16s, 32s, 64s)
           const waitTime = Math.pow(2, attempt) * 1000;
-          console.warn(`[AI] Lỗi retry-able cho refine: ${errorMsg}. Đợi ${waitTime/1000}s trước lần thử ${attempt + 1}/${maxRetries}`);
+          console.warn(`[AI] Lỗi retry-able cho refine: ${errorMsg}. Đợi ${waitTime / 1000}s trước lần thử ${attempt + 1}/3`);
           await new Promise(resolve => setTimeout(resolve, waitTime));
           continue;
         } else {
           // Lỗi không retry được hoặc đã hết lần thử
-          console.error(`[AI] Lỗi không thể retry cho refine hoặc đã hết ${maxRetries} lần thử: ${errorMsg}`);
+          console.error(`[AI] Lỗi không thể retry cho refine hoặc đã hết 3 lần thử: ${errorMsg}`);
           throw error;
         }
       }
@@ -794,9 +795,9 @@ export const refineFashionImage = async (
 
     // Nếu sau tất cả retry vẫn không được
     if (!response) {
-      throw new Error(`Model gemini-3-pro-image-preview không khả dụng cho refine sau ${maxRetries} lần thử. Chi tiết lỗi cuối: ${lastError?.message || 'Unknown error'}`);
+      throw new Error(`Model gemini-3-pro-image-preview không khả dụng cho refine sau 3 lần thử. Chi tiết lỗi cuối: ${lastError?.message || 'Unknown error'}`);
     }
-    
+
     // Trả về base64 để frontend hiển thị ngay
     // Ảnh sẽ được lưu vào Drive khi người dùng bấm "Lưu Concept"
     for (const part of response.candidates?.[0]?.content?.parts || []) {

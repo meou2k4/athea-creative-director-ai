@@ -310,6 +310,9 @@ const App: React.FC = () => {
   const [baselineCollectionState, setBaselineCollectionState] = useState<Map<string, Concept>>(new Map()); // Trạng thái ban đầu khi load từ Drive
   const [processingConcepts, setProcessingConcepts] = useState<Map<string, boolean>>(new Map()); // Map conceptId -> isProcessing để theo dõi ConceptCard đang xử lý
 
+  // State mới: Track tổng số concepts đang xử lý ảnh
+  const [isAnyConceptGenerating, setIsAnyConceptGenerating] = useState(false);
+
   const [input, setInput] = useState<UserInput>({
     productImages: [],
     faceReference: { data: null, mimeType: null },
@@ -1244,8 +1247,8 @@ const App: React.FC = () => {
                           key={scene.id}
                           onClick={() => setSelectedSceneId(scene.id)}
                           className={`flex-shrink-0 w-[140px] snap-start text-left p-3 rounded-xl border transition-all relative overflow-hidden group ${isActive
-                              ? 'border-fashion-accent bg-fashion-accent/5 shadow-md scale-[1.02]'
-                              : 'border-gray-100 bg-white hover:border-gray-300'
+                            ? 'border-fashion-accent bg-fashion-accent/5 shadow-md scale-[1.02]'
+                            : 'border-gray-100 bg-white hover:border-gray-300'
                             }`}
                         >
                           <div className={`w-8 h-8 rounded-lg flex items-center justify-center mb-3 transition-colors ${isActive ? 'bg-fashion-accent text-white' : 'bg-gray-100 text-gray-400'
@@ -1318,12 +1321,22 @@ const App: React.FC = () => {
                 <div className="space-y-8 animate-fade-in pb-20">
                   <h2 className="font-serif text-3xl mb-8 flex items-center gap-3"><span className="w-8 h-[1px] bg-black"></span> 03 Concepts x 05 Poses</h2>
                   <div className="grid grid-cols-1 gap-8">
-                    {data.concepts.map((concept, idx) => <ConceptCard key={concept.id} concept={concept} index={idx} userInput={input} onSave={handleSaveConcept} onUpdate={handleUpdateActiveConcept} userId={(user as any)?.id} isLoadingCollection={loadingCollection} isSaved={savedConcepts.some(c => {
-                      // Check xem concept này đã được lưu chưa dựa trên tên
-                      const savedName = c.concept_name_vn || c.concept_name_en;
-                      const currentName = concept.concept_name_vn || concept.concept_name_en;
-                      return savedName === currentName;
-                    })} />)}
+                    {data.concepts.map((concept, idx) => <ConceptCard
+                      key={concept.id}
+                      concept={concept}
+                      index={idx}
+                      userInput={input}
+                      onSave={handleSaveConcept}
+                      onUpdate={handleUpdateActiveConcept}
+                      userId={(user as any)?.id}
+                      isLoadingCollection={loadingCollection}
+                      isAnyConceptGenerating={isAnyConceptGenerating}
+                      isSaved={savedConcepts.some(c => {
+                        // Check xem concept này đã được lưu chưa dựa trên tên
+                        const savedName = c.concept_name_vn || c.concept_name_en;
+                        const currentName = concept.concept_name_vn || concept.concept_name_en;
+                        return savedName === currentName;
+                      })} />)}
                   </div>
                 </div>
               )}
@@ -1372,8 +1385,10 @@ const App: React.FC = () => {
                     }}
                     userId={(user as any)?.id}
                     isLoadingCollection={loadingCollection}
+                    isAnyConceptGenerating={isAnyConceptGenerating}
                     isSaved={true}
                     onProcessingChange={(isProcessing) => {
+                      // Cập nhật processing state cho concept này
                       setProcessingConcepts(prev => {
                         const next = new Map(prev);
                         if (isProcessing) {
@@ -1381,6 +1396,10 @@ const App: React.FC = () => {
                         } else {
                           next.delete(concept.id);
                         }
+
+                        // Cập nhật global state: có concept nào đang tạo ảnh không?
+                        setIsAnyConceptGenerating(next.size > 0);
+
                         return next;
                       });
                     }}
