@@ -251,6 +251,7 @@ async function callWithRetry<T>(fn: () => Promise<T>, maxRetries = 8): Promise<T
     } catch (error: any) {
       lastError = error;
       const errorMessage = error.message || "";
+      const errorCode = error.code || "";
 
       // Comprehensive error detection
       const isQuotaError = errorMessage.includes("429") ||
@@ -258,7 +259,18 @@ async function callWithRetry<T>(fn: () => Promise<T>, maxRetries = 8): Promise<T
         errorMessage.includes("quota") ||
         errorMessage.includes("RATE_LIMIT");
 
+      // Thêm detection cho UNAVAILABLE và Deadline expired errors
+      const isTimeoutError = errorMessage.includes('UNAVAILABLE') ||
+        errorMessage.includes('503') ||
+        errorMessage.includes('Deadline expired') ||
+        errorMessage.includes('DEADLINE_EXCEEDED') ||
+        errorMessage.includes('deadline') ||
+        errorCode === 'UNAVAILABLE' ||
+        errorCode === 'DEADLINE_EXCEEDED' ||
+        errorCode === 503;
+
       const isRetryableError = isQuotaError ||
+        isTimeoutError ||
         errorMessage.includes('not found') ||
         errorMessage.includes('not available') ||
         errorMessage.includes('404') ||
@@ -267,11 +279,21 @@ async function callWithRetry<T>(fn: () => Promise<T>, maxRetries = 8): Promise<T
         errorMessage.includes('SERVICE_UNAVAILABLE');
 
       if (isRetryableError && i < maxRetries - 1) {
-        // Smart backoff: aggressive for quota, moderate for others
-        const baseWaitTime = isQuotaError ? Math.pow(2, i + 3) * 1000 : Math.pow(2, i) * 1000;
+        // Smart backoff với thời gian chờ dài hơn cho timeout errors
+        let baseWaitTime;
+        if (isTimeoutError) {
+          // Timeout errors: chờ lâu hơn để server có thời gian xử lý (10s, 20s, 40s, 60s, 60s, 60s...)
+          baseWaitTime = Math.min(Math.pow(2, i + 3) * 1000, 60000); // Cap at 60s
+        } else if (isQuotaError) {
+          // Quota errors: aggressive backoff
+          baseWaitTime = Math.pow(2, i + 3) * 1000;
+        } else {
+          // Other errors: moderate backoff
+          baseWaitTime = Math.pow(2, i) * 1000;
+        }
         const waitTime = baseWaitTime + Math.random() * 2000; // Add jitter
 
-        const errorType = isQuotaError ? '[QUOTA]' : '[RETRYABLE]';
+        const errorType = isTimeoutError ? '[TIMEOUT/UNAVAILABLE]' : (isQuotaError ? '[QUOTA]' : '[RETRYABLE]');
         console.warn(`${errorType} ${errorMessage}. Waiting ${Math.round(waitTime / 1000)}s before retry ${i + 1}/${maxRetries}`);
         await new Promise(resolve => setTimeout(resolve, waitTime));
         continue;

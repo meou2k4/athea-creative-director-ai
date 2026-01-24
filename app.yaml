@@ -1,0 +1,19 @@
+runtime: nodejs20
+
+# Tăng timeout cho Cloud Run service
+# Mặc định là 60s, tăng lên 900s (15 phút) để xử lý concept analysis phức tạp
+# Retry logic có thể mất ~8 phút + thời gian xử lý API, cần 15 phút để an toàn
+env_variables:
+  NODE_ENV: "production"
+
+# Cloud Run specific settings
+service_timeout: 900s
+
+# Instance configuration
+instance_class: F1
+
+# Automatic scaling
+automatic_scaling:
+  min_instances: 0
+  max_instances: 10
+  target_cpu_utilization: 0.65
